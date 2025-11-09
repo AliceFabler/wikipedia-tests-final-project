@@ -1,8 +1,7 @@
 /*
- * Jenkinsfile — robust (Java 17 + Gradle 8.10)
- * — Автопоиск корня проекта (settings.gradle/build.gradle в подпапке)
- * — Автопоиск gradlew; fallback на системный gradle
- * — Архивация Allure/JUnit из любой подпапки
+ * Jenkinsfile — wikipedia-tests-final-project
+ * Java 17 + Gradle Wrapper 8.10.x
+ * Параметры: BRANCH, DEVICE_HOST, GRADLE_TASK, EXTRA_OPTS, UPLOAD_TO_TESTOPS, ALLURE_*
  */
 pipeline {
 	agent any
@@ -15,20 +14,23 @@ pipeline {
 	}
 
 	parameters {
-		string(name: 'BRANCH', defaultValue: 'main', description: 'Git branch')
-		choice(name: 'DEVICE_HOST', choices: ['local', 'remote'], description: 'Запуск: local | remote')
-		choice(name: 'GRADLE_TASK', choices: ['test', 'clean test'], description: 'Gradle task')
-		string(name: 'EXTRA_OPTS', defaultValue: '', description: 'Доп. -D: -Denv=local -Dappium.url=http://127.0.0.1:4723 ...')
+		string (name: 'BRANCH',      defaultValue: 'develop', description: 'Git branch')
+		choice (name: 'DEVICE_HOST', choices: ['local','remote'], description: 'local (Appium) | remote (BrowserStack)')
+		choice (name: 'GRADLE_TASK', choices: ['test','clean test'], description: 'Gradle task')
+		string (name: 'EXTRA_OPTS',  defaultValue: '', description: 'Доп. -D: -Denv=local -Dappium.url=http://127.0.0.1:4723 ...')
+		booleanParam(name: 'UPLOAD_TO_TESTOPS', defaultValue: true, description: 'Загрузка результатов в Allure TestOps через allurectl')
+		string (name: 'ALLURE_ENDPOINT',  defaultValue: 'https://allure.autotests.cloud', description: 'Allure TestOps endpoint')
+		string (name: 'ALLURE_PROJECT_ID', defaultValue: '', description: 'ID проекта в TestOps (если пусто — upload пропускается)')
 	}
 
 	environment {
-		GRADLE_USER_HOME = "${WORKSPACE}/.gradle"
-		// .allure-results может лежать в подпапке → используем **:
-		ALLURE_RESULTS_GLOB = "**/.allure-results/**"
-		GIT_URL = "https://github.com/AliceFabler/wikipedia-tests-final-project.git"
+		GRADLE_USER_HOME    = "${WORKSPACE}/.gradle"
+		ALLURE_RESULTS_PATH = ".allure-results"
+		GIT_URL             = "https://github.com/AliceFabler/wikipedia-tests-final-project.git"
 	}
 
 	stages {
+
 		stage('Checkout') {
 			steps {
 				git branch: "${params.BRANCH}", url: "${env.GIT_URL}"
@@ -39,44 +41,22 @@ pipeline {
 			steps {
 				sh 'java -version || true'
 				script {
-					// 1) Найти корень проекта (если код в подпапке)
-					env.PROJECT_DIR = sh(
-						script: '''
-              set -e
-              CAND="$(for d in . $(find . -maxdepth 3 -type d); do
-                        if [ -f "$d/settings.gradle" ] || [ -f "$d/settings.gradle.kts" ] || \
-                           [ -f "$d/build.gradle" ]    || [ -f "$d/build.gradle.kts" ]; then
-                          echo "$d"; break
-                        fi
-                      done)"
-              echo "${CAND:-.}"
-            ''',
-						returnStdout: true
-					).trim()
-					echo "Detected project dir: ${env.PROJECT_DIR}"
+					// Находим корень Gradle-проекта и gradlew
+					env.PROJ_DIR = sh(script: '''
+            set -e
+            for d in . */; do
+              [ -f "$d/settings.gradle" ] || [ -f "$d/settings.gradle.kts" ] && { echo "$d"; break; }
+            done
+          ''', returnStdout: true).trim()
+					if (!env.PROJ_DIR) { env.PROJ_DIR = '.' }
 
-					// 2) Найти gradlew (если лежит в подпапке)
-					env.WRAPPER_PATH = sh(
-						script: "find '${env.PROJECT_DIR}' -maxdepth 2 -type f -name gradlew | head -n1 || true",
-						returnStdout: true
-					).trim()
-					if (env.WRAPPER_PATH) {
-						sh "chmod +x '${env.WRAPPER_PATH}'"
-						echo "Using wrapper: ${env.WRAPPER_PATH}"
-					} else {
-						echo "gradlew not found → will try system 'gradle' binary"
-						sh 'gradle --version || true'
-					}
+					env.WRAPPER = sh(script: 'find "${PROJ_DIR}" -maxdepth 2 -type f -name gradlew | head -n1', returnStdout: true).trim()
+					if (!env.WRAPPER) { error 'gradlew не найден. Добавь wrapper в репозиторий.' }
 
-					// 3) Показать Gradle версию из проекта
-					sh """
-            cd '${env.PROJECT_DIR}'
-            if [ -n '${env.WRAPPER_PATH}' ]; then
-              '${env.WRAPPER_PATH}' --version || true
-            else
-              gradle --version || true
-            fi
-          """
+					sh "chmod +x ${env.WRAPPER}"
+					echo "Project dir: ${env.PROJ_DIR}"
+					echo "Using wrapper: ${env.WRAPPER}"
+					sh "cd ${env.PROJ_DIR} && ${env.WRAPPER} --version"
 				}
 			}
 		}
@@ -84,40 +64,62 @@ pipeline {
 		stage('Test') {
 			steps {
 				catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-					sh """
-            cd '${PROJECT_DIR}'
-            CMD="${WRAPPER_PATH}"
-            if [ -z "$CMD" ]; then
-              if ! command -v gradle >/dev/null 2>&1; then
-                echo "ERROR: gradle не найден и gradlew отсутствует. Установи Gradle 8.10 в Jenkins/на агенте ИЛИ закоммить gradle wrapper."
-                exit 1
-              fi
-              CMD="gradle"
-            fi
-            echo "Run: $CMD ${GRADLE_TASK}"
-            $CMD ${GRADLE_TASK} \
-              -DdeviceHost=${DEVICE_HOST} \
-              ${EXTRA_OPTS} \
-              --stacktrace --no-daemon --info
-          """
+					script {
+						def extra = params.EXTRA_OPTS?.trim()
+						def cmd = """
+              cd ${env.PROJ_DIR} && ${env.WRAPPER} ${params.GRADLE_TASK} \
+                -DdeviceHost=${params.DEVICE_HOST} \
+                ${extra} \
+                --stacktrace --no-daemon --info
+            """.stripIndent().trim()
+						sh label: 'Run Gradle tests', script: cmd
+					}
 				}
 			}
 			post {
 				always {
-					archiveArtifacts artifacts: "${ALLURE_RESULTS_GLOB}", fingerprint: true, allowEmptyArchive: true
+					archiveArtifacts artifacts: "${ALLURE_RESULTS_PATH}/**", fingerprint: true, allowEmptyArchive: true
 					junit testResults: "**/build/test-results/test/*.xml", allowEmptyResults: true
+
 					script {
-						try {
-							// Публикация Allure в Jenkins (если плагин установлен)
-							allure([
-								includeProperties: false,
-								jdk: '',
-								results: [[path: "**/.allure-results"]],
-								reportBuildPolicy: 'ALWAYS'
-							])
-						} catch (ignored) {
-							echo "Allure Jenkins plugin не настроен — пропускаю публикацию отчёта."
+						if (fileExists("${ALLURE_RESULTS_PATH}")) {
+							try {
+								allure([
+									includeProperties: false,
+									jdk: '',
+									results: [[path: "${ALLURE_RESULTS_PATH}"]],
+									reportBuildPolicy: 'ALWAYS'
+								])
+							} catch (ignored) {
+								echo "Allure Jenkins plugin не настроен — пропускаю публикацию отчёта."
+							}
+						} else {
+							echo "Папка ${ALLURE_RESULTS_PATH} не найдена — пропускаю публикацию Allure."
 						}
+					}
+				}
+			}
+		}
+
+		stage('Upload to Allure TestOps') {
+			when {
+				allOf {
+					expression { return params.UPLOAD_TO_TESTOPS }
+					expression { return params.ALLURE_PROJECT_ID?.trim() }
+				}
+			}
+			steps {
+				withEnv(["ALLURE_ENDPOINT=${params.ALLURE_ENDPOINT}"]) {
+					withCredentials([string(credentialsId: 'ALLURE_TOKEN', variable: 'ALLURE_TOKEN')]) {
+						sh '''
+              echo "Upload to Allure TestOps: ${ALLURE_ENDPOINT}, project ${ALLURE_PROJECT_ID}"
+              curl -sL https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64 -o allurectl
+              chmod +x allurectl
+              ./allurectl --endpoint "${ALLURE_ENDPOINT}" --token "${ALLURE_TOKEN}" results upload \
+                --project-id "${ALLURE_PROJECT_ID}" \
+                --launch-name "Jenkins #${BUILD_NUMBER} (${BRANCH_NAME}) - ${DEVICE_HOST}" \
+                --results "**/.allure-results" || true
+            '''
 					}
 				}
 			}
@@ -126,7 +128,7 @@ pipeline {
 
 	post {
 		always {
-			echo "Done. Если упало на поиске gradle/gradlew — см. инструкции ниже."
+			echo "Готово. Если отчёта нет — проверь, что тесты действительно стартовали и сформировали ${ALLURE_RESULTS_PATH}/"
 		}
 	}
 }
