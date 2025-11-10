@@ -1,17 +1,15 @@
 /*
  * Jenkinsfile — wikipedia-tests-final-project (Java 17, creds & configs from repo)
  *
- * RUN_TARGET:      api | ui-remote | manual | all
- * RUN_PARALLEL:    true -> при RUN_TARGET=all этапы API/UI/MANUAL запускаются параллельно
+ * RUN_TARGET:   api | ui-remote | manual | all
+ * RUN_PARALLEL: true -> при RUN_TARGET=all этапы API/UI/MANUAL идут параллельно
  *
- * Читаемые файлы (из репозитория):
- *   src/test/resources/allure.properties       (allure.results.directory=.allure-results)
+ * Конфиги/креды читаются из репозитория:
+ *   src/test/resources/allure.properties
  *   src/test/resources/api.properties
- *   src/test/resources/auth.properties         (BrowserStack: userName/key/remoteUrl)
- *   src/test/resources/remote.properties       (дефолтные app/device/os_version)
- *   src/test/resources/testops.properties      (Allure TestOps: allure.endpoint/project.id/token/launch.name)
- *
- * ВНИМАНИЕ: хранить секреты в репо рискованно. Здесь токены не печатаются (set +x), но видны всем с доступом к коду.
+ *   src/test/resources/auth.properties
+ *   src/test/resources/remote.properties
+ *   src/test/resources/testops.properties
  */
 pipeline {
 	agent any
@@ -23,14 +21,13 @@ pipeline {
 		timeout(time: 60, unit: 'MINUTES')
 	}
 
-	// Узлы уже с Java 17 -> tools не требуется
-	// tools { jdk 'jdk-17' }
+	// tools { jdk 'jdk-17' } // ноды уже на Java 17
 
 	parameters {
 		choice(name: 'RUN_TARGET', choices: ['api', 'ui-remote', 'manual', 'all'], description: 'Что запускать')
-		booleanParam(name: 'RUN_PARALLEL', defaultValue: true, description: 'При RUN_TARGET=all — запускать API/UI/MANUAL параллельно')
-		string(name: 'ALLURE_RESULTS_PATH', defaultValue: '.allure-results', description: 'Куда писать Allure результаты')
-		string(name: 'GRADLE_ARGS', defaultValue: '', description: 'Доп. аргументы Gradle (например, --no-daemon --stacktrace)')
+		booleanParam(name: 'RUN_PARALLEL', defaultValue: true, description: 'При RUN_TARGET=all — запускать параллельно')
+		string(name: 'ALLURE_RESULTS_PATH', defaultValue: '.allure-results', description: 'Куда писать Allure')
+		string(name: 'GRADLE_ARGS', defaultValue: '', description: 'Доп. аргументы Gradle (напр., --no-daemon --stacktrace)')
 		// UI (remote) overrides; если пусто — берутся из remote.properties/auth.properties
 		string(name: 'APP', defaultValue: '', description: 'bs://… или URL APK/APP')
 		string(name: 'DEVICE', defaultValue: '', description: 'Например Google Pixel 7')
@@ -50,7 +47,7 @@ pipeline {
 			steps {
 				sh '''
           echo "Java: $(java -version 2>&1 | head -n1)"
-          echo "Gradle Wrapper: $(./gradlew -v | head -n3 | tr "\n" " | ")"
+          echo "Gradle Wrapper: $(./gradlew -v | head -n3 | tr "\\n" " | ")"
           rm -rf "${ALLURE_RESULTS}" && mkdir -p "${ALLURE_RESULTS}"
 
           for f in allure.properties api.properties auth.properties remote.properties; do
@@ -71,7 +68,7 @@ pipeline {
 			}
 		}
 
-		// ---------------- PARALLEL (RUN_TARGET=all && RUN_PARALLEL=true) ----------------
+		// -------- PARALLEL (RUN_TARGET=all && RUN_PARALLEL=true) --------
 		stage('Tests (parallel)') {
 			when {
 				allOf {
@@ -99,7 +96,6 @@ pipeline {
 							if (params.OS_VERSION?.trim()) { overrides << "-Dos_version='${params.OS_VERSION.trim()}'" }
 							if (params.REMOTE_URL?.trim()) { overrides << "-DremoteUrl='${params.REMOTE_URL.trim()}'" }
 							def overridesStr = overrides.join(' ')
-
 							sh """
                 ./gradlew test \\
                   -Ptags='android,remote,wikipedia' \\
@@ -131,15 +127,12 @@ pipeline {
 			}
 		}
 
-		// ---------------- SEQUENTIAL (когда не параллельный all или одиночные цели) ----------------
+		// -------- SEQUENTIAL (для одиночных целей или all без параллели) --------
 		stage('API tests') {
 			when {
 				anyOf {
 					expression { params.RUN_TARGET == 'api' }
-					allOf {
-						expression { params.RUN_TARGET == 'all' }
-						expression { !params.RUN_PARALLEL }
-					}
+					allOf { expression { params.RUN_TARGET == 'all' }; expression { !params.RUN_PARALLEL } }
 				}
 			}
 			steps {
@@ -163,10 +156,7 @@ pipeline {
 			when {
 				anyOf {
 					expression { params.RUN_TARGET == 'ui-remote' }
-					allOf {
-						expression { params.RUN_TARGET == 'all' }
-						expression { !params.RUN_PARALLEL }
-					}
+					allOf { expression { params.RUN_TARGET == 'all' }; expression { !params.RUN_PARALLEL } }
 				}
 			}
 			steps {
@@ -177,7 +167,6 @@ pipeline {
 					if (params.OS_VERSION?.trim()) { overrides << "-Dos_version='${params.OS_VERSION.trim()}'" }
 					if (params.REMOTE_URL?.trim()) { overrides << "-DremoteUrl='${params.REMOTE_URL.trim()}'" }
 					def overridesStr = overrides.join(' ')
-
 					sh """
             ./gradlew test \\
               -Ptags='android,remote,wikipedia' \\
@@ -201,10 +190,7 @@ pipeline {
 			when {
 				anyOf {
 					expression { params.RUN_TARGET == 'manual' }
-					allOf {
-						expression { params.RUN_TARGET == 'all' }
-						expression { !params.RUN_PARALLEL }
-					}
+					allOf { expression { params.RUN_TARGET == 'all' }; expression { !params.RUN_PARALLEL } }
 				}
 			}
 			steps {
@@ -224,33 +210,35 @@ pipeline {
 			}
 		}
 
-		// ---------------- Upload to Allure TestOps (общий финальный этап) ----------------
+		// -------- Upload to Allure TestOps (без readProperties) --------
 		stage('Upload to Allure TestOps') {
 			when { expression { params.UPLOAD_TO_TESTOPS } }
 			steps {
-				script {
-					def props = readProperties file: 'src/test/resources/testops.properties'
-					env.ALLURE_ENDPOINT   = props['allure.endpoint'] ?: ''
-					env.ALLURE_PROJECT_ID = props['allure.project.id'] ?: ''
-					env.ALLURE_TOKEN      = props['allure.token'] ?: ''
-					env.ALLURE_LAUNCH     = props['allure.launch.name'] ?: "wiki-mobile:${JOB_NAME} #${BUILD_NUMBER}"
+				sh '''
+          set +x
+          if [ ! -f src/test/resources/testops.properties ]; then
+            echo "testops.properties not found — skip upload"
+            exit 0
+          fi
 
-					sh '''
-            set +x
-            echo "Downloading allurectl..."
-            os=$(uname -s | tr A-Z a-z)
-            curl -sL "https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_${os}_amd64" -o allurectl
-            chmod +x allurectl
+          ENDPOINT=$(grep -E '^allure\\.endpoint=' src/test/resources/testops.properties | sed 's/^allure\\.endpoint=//')
+          PROJECT_ID=$(grep -E '^allure\\.project\\.id=' src/test/resources/testops.properties | sed 's/^allure\\.project\\.id=//')
+          TOKEN=$(grep -E '^allure\\.token=' src/test/resources/testops.properties | sed 's/^allure\\.token=//')
+          LAUNCH=$(grep -E '^allure\\.launch\\.name=' src/test/resources/testops.properties | sed 's/^allure\\.launch\\.name=//')
+          [ -z "$LAUNCH" ] && LAUNCH="wiki-mobile:${JOB_NAME} #${BUILD_NUMBER}"
 
-            ./allurectl \
-              --endpoint "${ALLURE_ENDPOINT}" \
-              --token "${ALLURE_TOKEN}" \
-              upload --project-id "${ALLURE_PROJECT_ID}" \
-              --results "${ALLURE_RESULTS}" \
-              --launch-name "${ALLURE_LAUNCH}" \
-              --force || true
-          '''
-				}
+          os=$(uname -s | tr A-Z a-z)
+          curl -sL "https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_${os}_amd64" -o allurectl
+          chmod +x allurectl
+
+          ./allurectl \
+            --endpoint "$ENDPOINT" \
+            --token "$TOKEN" \
+            upload --project-id "$PROJECT_ID" \
+            --results "${ALLURE_RESULTS}" \
+            --launch-name "$LAUNCH" \
+            --force || true
+        '''
 			}
 		}
 	}
