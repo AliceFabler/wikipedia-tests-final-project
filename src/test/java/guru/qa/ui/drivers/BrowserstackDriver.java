@@ -58,7 +58,7 @@ public class BrowserstackDriver implements WebDriverProvider {
         putIfNotBlank(bstack, "buildName", mobile.getBuild());
         putIfNotBlank(bstack, "sessionName", mobile.getSessionName());
 
-        putIfNotBlank(bstack, "appiumVersion", nullTo(mobile.getAppiumVersion(), "latest"));
+//        putIfNotBlank(bstack, "appiumVersion", nullTo(mobile.getAppiumVersion(), "latest"));
 //        putIfNotBlank(bstack, "networkLogs", nullTo(mobile.getNetworkLogs(), "true"));
         putIfNotBlank(bstack, "debug",       nullTo(mobile.getDebug(), "true"));
         putIfNotBlank(bstack, "video",       nullTo(mobile.getVideo(), "true"));

@@ -41,11 +41,11 @@ public interface RemoteConfig extends Config {
     @DefaultValue("UI ${env.JOB_NAME} #${env.BUILD_NUMBER}")
     String getSessionName();
 
-    // ---- BrowserStack / Appium настройки ----
-    /** Версия Appium на стороне BrowserStack */
-    @Key("appiumVersion")
-    @DefaultValue("latest")
-    String getAppiumVersion();
+//    // ---- BrowserStack / Appium настройки ----
+//    /** Версия Appium на стороне BrowserStack */
+//    @Key("appiumVersion")
+//    @DefaultValue("latest")
+//    String getAppiumVersion();
 
 //    /** Включить сетевые логи в BrowserStack (bstack:options.networkLogs) */
 //    @Key("networkLogs")
