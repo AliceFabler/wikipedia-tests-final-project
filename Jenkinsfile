@@ -116,6 +116,7 @@ pipeline {
 				}
 			}
 		}
+
 		stage('Upload to Allure TestOps') {
 			steps {
 				script {
@@ -123,12 +124,16 @@ pipeline {
 					def results   = "${projDir}/.allure-results"
 					def propsPath = "${projDir}/src/test/resources/testops.properties"
 
-					if (!fileExists(results)) { echo "No .allure-results — skip TestOps upload"; return }
-					if (!fileExists(propsPath)) { echo "No testops.properties — skip TestOps upload"; return }
+					if (!fileExists(results))  { echo "No .allure-results — skip TestOps upload"; return }
+					if (!fileExists(propsPath)){ echo "No testops.properties — skip TestOps upload"; return }
 
+					// читаем свойства
 					def propsText = readFile(file: propsPath, encoding: 'UTF-8')
 					def lines = propsText.readLines()
-					def val = { key -> def line = lines.find { it.trim().startsWith("${key}=") }; line ? line.substring(line.indexOf('=') + 1).trim() : "" }
+					def val = { key ->
+						def line = lines.find { it.trim().startsWith("${key}=") }
+						line ? line.substring(line.indexOf('=') + 1).trim() : ""
+					}
 
 					env.ALLURE_ENDPOINT    = val('allure.endpoint')
 					env.ALLURE_PROJECT_ID  = val('allure.project.id')
@@ -139,66 +144,59 @@ pipeline {
 					ln = ln.replace('${env.BUILD_NUMBER}', env.BUILD_NUMBER ?: '')
 					env.ALLURE_LAUNCH_NAME = ln
 
-					// Флаг для временного обхода TLS-валидации (берём из файла)
 					env.ALLURE_INSECURE = (val('allure.insecure')?.toLowerCase() == 'true') ? 'true' : 'false'
-				}
 
-				dir("${env.PRJ_DIR}") {
-					// Возвращаем код, чтобы не ронять билд, если upload падает
-					def rc = sh(returnStatus: true, script: '''
-        set -e
+					dir("${env.PRJ_DIR}") {
+						int rc = sh(returnStatus: true, script: '''
+          set -e
 
-        # Диагностика окружения (полезно для TLS)
-        date -u || true
-        java -version || true
+          date -u || true
+          java -version || true
 
-        # Проверка наличия результатов
-        if [ ! -d .allure-results ] || [ -z "$(ls -A .allure-results 2>/dev/null)" ]; then
-          echo "No results to upload — skip TestOps upload"
-          exit 0
-        fi
+          if [ ! -d .allure-results ] || [ -z "$(ls -A .allure-results 2>/dev/null)" ]; then
+            echo "No results to upload — skip TestOps upload"
+            exit 0
+          fi
 
-        mkdir -p tools
-        if [ ! -x tools/allurectl ]; then
-          echo "Downloading allurectl..."
-          curl -fsSL -o tools/allurectl \
-            https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64
-          chmod +x tools/allurectl
-        fi
+          mkdir -p tools
+          if [ ! -x tools/allurectl ]; then
+            echo "Downloading allurectl..."
+            curl -fsSL -o tools/allurectl \
+              https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64
+            chmod +x tools/allurectl
+          fi
 
-        # При необходимости — временно пропускаем TLS-проверку
-        INSECURE_FLAG=""
-        if [ "${ALLURE_INSECURE}" = "true" ]; then
-          INSECURE_FLAG="-i"
-          echo "TLS verification is DISABLED for this upload (ALLURE_INSECURE=true)."
-        fi
+          INSECURE_FLAG=""
+          if [ "${ALLURE_INSECURE}" = "true" ]; then
+            INSECURE_FLAG="-i"
+            echo "TLS verification is DISABLED (ALLURE_INSECURE=true)."
+          fi
 
-        # Небольшая диагностика сертификата (если есть openssl)
-        if command -v openssl >/dev/null 2>&1; then
-          host="$(echo "$ALLURE_ENDPOINT" | sed -E 's#https?://([^/]+)/?.*#\\1#')"
-          echo "TLS debug for $host"
-          echo | openssl s_client -servername "$host" -connect "$host:443" 2>/dev/null | openssl x509 -noout -dates -issuer -subject || true
-        fi
+          if command -v openssl >/dev/null 2>&1; then
+            host="$(echo "$ALLURE_ENDPOINT" | sed -E 's#https?://([^/]+)/?.*#\\1#')"
+            echo "TLS debug for $host"
+            echo | openssl s_client -servername "$host" -connect "$host:443" 2>/dev/null | openssl x509 -noout -dates -issuer -subject || true
+          fi
 
-        echo "Uploading results to Allure TestOps: endpoint=$ALLURE_ENDPOINT project=$ALLURE_PROJECT_ID launch='$ALLURE_LAUNCH_NAME'"
+          echo "Uploading results to Allure TestOps: endpoint=$ALLURE_ENDPOINT project=$ALLURE_PROJECT_ID launch='$ALLURE_LAUNCH_NAME'"
 
-        tools/allurectl $INSECURE_FLAG \
-          --endpoint "$ALLURE_ENDPOINT" \
-          --token "$ALLURE_TOKEN" \
-          upload \
-          --project-id "$ALLURE_PROJECT_ID" \
-          --launch-name "$ALLURE_LAUNCH_NAME" \
-          --ci-type jenkins \
-          --job-name "${JOB_NAME:-}" \
-          --job-run-id "${BUILD_NUMBER:-}" \
-          --job-run-url "${BUILD_URL:-}" \
-          --job-uid "${JOB_NAME:-}#${BUILD_NUMBER:-}" \
-          .allure-results
-      ''')
-
-					if (rc != 0) {
-						echo "allurectl upload failed with code ${rc} — marking build UNSTABLE (tests OK, публикация сорвалась)."
-						currentBuild.result = 'UNSTABLE'
+          tools/allurectl $INSECURE_FLAG \
+            --endpoint "$ALLURE_ENDPOINT" \
+            --token "$ALLURE_TOKEN" \
+            upload \
+            --project-id "$ALLURE_PROJECT_ID" \
+            --launch-name "$ALLURE_LAUNCH_NAME" \
+            --ci-type jenkins \
+            --job-name "${JOB_NAME:-}" \
+            --job-run-id "${BUILD_NUMBER:-}" \
+            --job-run-url "${BUILD_URL:-}" \
+            --job-uid "${JOB_NAME:-}#${BUILD_NUMBER:-}" \
+            .allure-results
+        ''')
+						if (rc != 0) {
+							echo "allurectl upload failed with code ${rc} — marking build UNSTABLE."
+							currentBuild.result = 'UNSTABLE'
+						}
 					}
 				}
 			}
