@@ -47,10 +47,10 @@ public interface RemoteConfig extends Config {
     @DefaultValue("latest")
     String getAppiumVersion();
 
-    /** Включить сетевые логи в BrowserStack (bstack:options.networkLogs) */
-    @Key("networkLogs")
-    @DefaultValue("true")
-    String getNetworkLogs();
+//    /** Включить сетевые логи в BrowserStack (bstack:options.networkLogs) */
+//    @Key("networkLogs")
+//    @DefaultValue("true")
+//    String getNetworkLogs();
 
     /** Включить debug на BrowserStack (bstack:options.debug) */
     @Key("debug")
