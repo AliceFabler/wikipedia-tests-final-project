@@ -138,13 +138,21 @@ pipeline {
 					ln = ln.replace('${env.JOB_NAME}', env.JOB_NAME ?: '')
 					ln = ln.replace('${env.BUILD_NUMBER}', env.BUILD_NUMBER ?: '')
 					env.ALLURE_LAUNCH_NAME = ln
+
+					// Флаг для временного обхода TLS-валидации (берём из файла)
+					env.ALLURE_INSECURE = (val('allure.insecure')?.toLowerCase() == 'true') ? 'true' : 'false'
 				}
 
 				dir("${env.PRJ_DIR}") {
-					sh '''
+					// Возвращаем код, чтобы не ронять билд, если upload падает
+					def rc = sh(returnStatus: true, script: '''
         set -e
 
-        # Если нет результатов или каталог пуст — пропускаем
+        # Диагностика окружения (полезно для TLS)
+        date -u || true
+        java -version || true
+
+        # Проверка наличия результатов
         if [ ! -d .allure-results ] || [ -z "$(ls -A .allure-results 2>/dev/null)" ]; then
           echo "No results to upload — skip TestOps upload"
           exit 0
@@ -158,9 +166,23 @@ pipeline {
           chmod +x tools/allurectl
         fi
 
+        # При необходимости — временно пропускаем TLS-проверку
+        INSECURE_FLAG=""
+        if [ "${ALLURE_INSECURE}" = "true" ]; then
+          INSECURE_FLAG="-i"
+          echo "TLS verification is DISABLED for this upload (ALLURE_INSECURE=true)."
+        fi
+
+        # Небольшая диагностика сертификата (если есть openssl)
+        if command -v openssl >/dev/null 2>&1; then
+          host="$(echo "$ALLURE_ENDPOINT" | sed -E 's#https?://([^/]+)/?.*#\\1#')"
+          echo "TLS debug for $host"
+          echo | openssl s_client -servername "$host" -connect "$host:443" 2>/dev/null | openssl x509 -noout -dates -issuer -subject || true
+        fi
+
         echo "Uploading results to Allure TestOps: endpoint=$ALLURE_ENDPOINT project=$ALLURE_PROJECT_ID launch='$ALLURE_LAUNCH_NAME'"
 
-        tools/allurectl \
+        tools/allurectl $INSECURE_FLAG \
           --endpoint "$ALLURE_ENDPOINT" \
           --token "$ALLURE_TOKEN" \
           upload \
@@ -172,7 +194,12 @@ pipeline {
           --job-run-url "${BUILD_URL:-}" \
           --job-uid "${JOB_NAME:-}#${BUILD_NUMBER:-}" \
           .allure-results
-      '''
+      ''')
+
+					if (rc != 0) {
+						echo "allurectl upload failed with code ${rc} — marking build UNSTABLE (tests OK, публикация сорвалась)."
+						currentBuild.result = 'UNSTABLE'
+					}
 				}
 			}
 		}
