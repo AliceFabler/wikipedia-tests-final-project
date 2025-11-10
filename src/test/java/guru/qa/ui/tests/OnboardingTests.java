@@ -25,8 +25,7 @@ public class OnboardingTests extends TestBase {
     @Story("Контент и последовательность слайдов")
     @Description("Проверяем, что все 4 слайда онбординга показываются по порядку и завершаются появлением кнопки «Get started».")
     @Issue("HOMEWORK-1528")
-//    @TmsLink("TMS-ONB-001")
-//    @AllureId("ONB-001")
+    @AllureId("40940")
     void onboardingSlidesContentTest() {
         App.screens().onboarding.completeOnboardingFlow();
     }
@@ -36,8 +35,7 @@ public class OnboardingTests extends TestBase {
     @Story("Управление языками во время онбординга")
     @Description("Открыть выбор языков на первом слайде → перейти в «Add language» → выбрать первый язык → убедиться, что он появился в «Your languages».")
     @Issue("HOMEWORK-1529")
-//    @TmsLink("TMS-ONB-002")
-//    @AllureId("ONB-002")
+    @AllureId("40941")
     void addLanguageViaOnboardingTest() {
         step("Открыть выбор языков на первом слайде онбординга", () -> {
             App.screens().onboarding.shouldBeVisible();

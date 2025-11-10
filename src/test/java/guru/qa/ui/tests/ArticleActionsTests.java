@@ -32,10 +32,8 @@ public class ArticleActionsTests extends TestBase {
             Поиск «query» → открыть первый результат → «Сохранить» → дождаться snackbar →
             перейти в «Сохранённые» и убедиться, что статья присутствует в дефолтном списке.
             """)
-//    @Link(name = "Spec", url = "https://example.org/wiki-mobile/specs")
     @Issue("HOMEWORK-1525")
-//    @TmsLink("TMS-5678")
-//    @AllureId("PO-001")
+    @AllureId("40937")
     void addArticleToSaved() {
         final String query = vars.randomSearchValue; // например, "Java"
         parameter("query", query);

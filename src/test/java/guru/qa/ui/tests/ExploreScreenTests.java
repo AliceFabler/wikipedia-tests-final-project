@@ -35,8 +35,7 @@ public class ExploreScreenTests extends TestBase {
     @Story("Отображение секций ленты")
     @Description("Автоскролл до карточки 'In the news' / 'В новостях' и проверка видимости её заголовка.")
     @Issue("HOMEWORK-1526")
-//    @TmsLink("TMS-EXP-001")
-//    @AllureId("EXP-001")
+    @AllureId("40938")
     void inTheNewsSectionPresent_onExplore() {
         final String sectionEn = "In the news";
         final String sectionRu = "в новостях";
@@ -52,8 +51,7 @@ public class ExploreScreenTests extends TestBase {
     @Story("Навигация из карточек ленты в экран статьи")
     @Description("Скролл до 'Featured article' → тап по первому кликабельному элементу → закрыть оверлеи → проверить экран статьи.")
     @Issue("HOMEWORK-1527")
-//    @TmsLink("TMS-EXP-002")
-//    @AllureId("EXP-002")
+    @AllureId("40939")
     void openArticleFromFeaturedArticle() {
         final String sectionEn = "Featured article";
         final String sectionRu = "избранная статья";

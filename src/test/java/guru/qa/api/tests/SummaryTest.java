@@ -47,8 +47,7 @@ public class SummaryTest {
             проверяем: 200 + корректный заголовок (нормализованный) + язык ответа и непустой extract.
             """)
     @Issue("HOMEWORK-1536")
-//    @TmsLink("TMS-API-PS-001")
-//    @AllureId("API-PS-001")
+    @AllureId("40943")
     void pageSummary_smoke(String title, String lang) {
         PageSummary summary = api.getPageSummary(title, lang);
 
@@ -87,8 +86,7 @@ public class SummaryTest {
             воспроизводимое перемешивание, проверяем 200 + заголовок (нормализованный) + язык и непустой extract.
             """)
     @Issue("HOMEWORK-1537")
-//    @TmsLink("TMS-API-PS-002")
-//    @AllureId("API-PS-002")
+    @AllureId("40944")
     void pageSummary_dynamic(String title, String lang) {
         PageSummary summary = api.getPageSummary(title, lang);
 

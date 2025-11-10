@@ -1,134 +1,112 @@
+\
 /*
- * Jenkinsfile — wikipedia-tests-final-project
- * Java 17 + Gradle Wrapper 8.10.x
- * Параметры: BRANCH, DEVICE_HOST, GRADLE_TASK, EXTRA_OPTS, UPLOAD_TO_TESTOPS, ALLURE_*
+ * Jenkinsfile — Wikipedia Mobile tests (Java 17 nodes, creds from src/test/resources/auth.properties)
+ * Runs API tests and UI (remote) tests separately or together.
+ * Assumes:
+ *  - Gradle Wrapper present in repo
+ *  - Agent nodes use Java 17 (JAVA_HOME points to JDK 17)
+ *  - Allure Jenkins plugin installed (for `allure` step)
+ *  - BrowserStack credentials are stored in the repo in src/test/resources/auth.properties
+ *    and resolved by Owner (@Config.Sources system->env->classpath:${env}.properties->classpath:auth.properties).
+ *
+ *  SECURITY NOTE: keeping real credentials in VCS is strongly discouraged. Prefer Jenkins credentials.
  */
 pipeline {
-	agent any
+  agent any
 
-	options {
-		timestamps()
-		buildDiscarder(logRotator(numToKeepStr: '20'))
-		disableConcurrentBuilds()
-		timeout(time: 60, unit: 'MINUTES')
-	}
+  options {
+    timestamps()
+    ansiColor('xterm')
+    buildDiscarder(logRotator(numToKeepStr: '30'))
+    disableConcurrentBuilds()
+    timeout(time: 60, unit: 'MINUTES')
+  }
 
-	parameters {
-		string (name: 'BRANCH',      defaultValue: 'develop', description: 'Git branch')
-		choice (name: 'DEVICE_HOST', choices: ['local','remote'], description: 'local (Appium) | remote (BrowserStack)')
-		choice (name: 'GRADLE_TASK', choices: ['test','clean test'], description: 'Gradle task')
-		string (name: 'EXTRA_OPTS',  defaultValue: '', description: 'Доп. -D: -Denv=local -Dappium.url=http://127.0.0.1:4723 ...')
-		booleanParam(name: 'UPLOAD_TO_TESTOPS', defaultValue: true, description: 'Загрузка результатов в Allure TestOps через allurectl')
-		string (name: 'ALLURE_ENDPOINT',  defaultValue: 'https://allure.autotests.cloud', description: 'Allure TestOps endpoint')
-		string (name: 'ALLURE_PROJECT_ID', defaultValue: '', description: 'ID проекта в TestOps (если пусто — upload пропускается)')
-	}
+  // Nodes already run Java 17; omit tools.
+  // tools { jdk 'jdk-17' }
 
-	environment {
-		GRADLE_USER_HOME    = "${WORKSPACE}/.gradle"
-		ALLURE_RESULTS_PATH = ".allure-results"
-		GIT_URL             = "https://github.com/AliceFabler/wikipedia-tests-final-project.git"
-	}
+  parameters {
+    choice(name: 'RUN_TARGET', choices: ['api', 'ui-remote', 'both'], description: 'What to run')
+    string(name: 'GRADLE_ARGS', defaultValue: '', description: 'Extra args for Gradle (e.g., --no-daemon --stacktrace)')
+    string(name: 'ALLURE_RESULTS_PATH', defaultValue: '.allure-results', description: 'Where tests write Allure results')
+    // UI (remote) overrides; leave empty to use src/test/resources/*.properties
+    string(name: 'APP', defaultValue: '', description: 'Remote app id or URL (e.g., bs://... or https://...)')
+    string(name: 'DEVICE', defaultValue: '', description: 'Device name override (e.g., Google Pixel 7)')
+    string(name: 'OS_VERSION', defaultValue: '', description: 'OS version override (e.g., 13.0)')
+    string(name: 'REMOTE_URL', defaultValue: '', description: 'Override remote Appium URL (leave empty to use auth.properties)')
+    string(name: 'UI_TAGS', defaultValue: 'android,remote,wikipedia', description: 'JUnit tags for UI run (comma-separated)')
+    string(name: 'API_TAGS', defaultValue: 'api', description: 'JUnit tags for API run (comma-separated)')
+  }
 
-	stages {
+  environment {
+    ALLURE_RESULTS = "${params.ALLURE_RESULTS_PATH}"
+  }
 
-		stage('Checkout') {
-			steps {
-				git branch: "${params.BRANCH}", url: "${env.GIT_URL}"
-			}
-		}
+  stages {
+    stage('Prep') {
+      steps {
+        sh 'echo "Java: $(java -version 2>&1 | head -n1)"'
+        sh 'echo "Gradle Wrapper: $(./gradlew -v | head -n3 | tr \"\\n\" \" | \")"; true'
+        sh 'rm -rf "${ALLURE_RESULTS}" && mkdir -p "${ALLURE_RESULTS}"'
+        sh 'test -f src/test/resources/auth.properties && echo "auth.properties found" || (echo "auth.properties NOT found!" && exit 1)'
+      }
+    }
 
-		stage('Prepare') {
-			steps {
-				sh 'java -version || true'
-				script {
-					// Находим корень Gradle-проекта и gradlew
-					env.PROJ_DIR = sh(script: '''
-            set -e
-            for d in . */; do
-              [ -f "$d/settings.gradle" ] || [ -f "$d/settings.gradle.kts" ] && { echo "$d"; break; }
-            done
-          ''', returnStdout: true).trim()
-					if (!env.PROJ_DIR) { env.PROJ_DIR = '.' }
+    stage('API tests') {
+      when { anyOf { expression { params.RUN_TARGET == 'api' }; expression { params.RUN_TARGET == 'both' } } }
+      steps {
+        sh """
+          ./gradlew clean test \\
+            -Ptags='${API_TAGS}' \\
+            -Dallure.results.directory='${ALLURE_RESULTS}' \\
+            ${GRADLE_ARGS}
+        """
+      }
+      post {
+        always {
+          allure([results: [[path: "${ALLURE_RESULTS}"]]])
+          archiveArtifacts artifacts: "${ALLURE_RESULTS}/**", allowEmptyArchive: true
+          junit allowEmptyResults: true, testResults: "build/test-results/test/*.xml"
+        }
+      }
+    }
 
-					env.WRAPPER = sh(script: 'find "${PROJ_DIR}" -maxdepth 2 -type f -name gradlew | head -n1', returnStdout: true).trim()
-					if (!env.WRAPPER) { error 'gradlew не найден. Добавь wrapper в репозиторий.' }
+    stage('UI tests (remote)') {
+      when { anyOf { expression { params.RUN_TARGET == 'ui-remote' }; expression { params.RUN_TARGET == 'both' } } }
+      steps {
+        script {
+          // Build optional -D overrides from parameters; DO NOT pass user/key — they are read from classpath:auth.properties
+          def overrides = []
+          if (params.APP?.trim())        { overrides << "-Dapp='${params.APP.trim()}'" }
+          if (params.DEVICE?.trim())     { overrides << "-Ddevice='${params.DEVICE.trim()}'" }
+          if (params.OS_VERSION?.trim()) { overrides << "-Dos_version='${params.OS_VERSION.trim()}'" }
+          if (params.REMOTE_URL?.trim()) { overrides << "-DremoteUrl='${params.REMOTE_URL.trim()}'" }
+          def overridesStr = overrides.join(' ')
 
-					sh "chmod +x ${env.WRAPPER}"
-					echo "Project dir: ${env.PROJ_DIR}"
-					echo "Using wrapper: ${env.WRAPPER}"
-					sh "cd ${env.PROJ_DIR} && ${env.WRAPPER} --version"
-				}
-			}
-		}
+          sh """
+            ./gradlew test \\
+              -Ptags='${UI_TAGS}' \\
+              -DdeviceHost=remote \\
+              -Denv=remote \\
+              ${overridesStr} \\
+              -Dallure.results.directory='${ALLURE_RESULTS}' \\
+              ${GRADLE_ARGS}
+          """
+        }
+      }
+      post {
+        always {
+          allure([results: [[path: "${ALLURE_RESULTS}"]]])
+          archiveArtifacts artifacts: "${ALLURE_RESULTS}/**", allowEmptyArchive: true
+          junit allowEmptyResults: true, testResults: "build/test-results/test/*.xml"
+        }
+      }
+    }
+  }
 
-		stage('Test') {
-			steps {
-				catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-					script {
-						def extra = params.EXTRA_OPTS?.trim()
-						def cmd = """
-              cd ${env.PROJ_DIR} && ${env.WRAPPER} ${params.GRADLE_TASK} \
-                -DdeviceHost=${params.DEVICE_HOST} \
-                ${extra} \
-                --stacktrace --no-daemon --info
-            """.stripIndent().trim()
-						sh label: 'Run Gradle tests', script: cmd
-					}
-				}
-			}
-			post {
-				always {
-					archiveArtifacts artifacts: "${ALLURE_RESULTS_PATH}/**", fingerprint: true, allowEmptyArchive: true
-					junit testResults: "**/build/test-results/test/*.xml", allowEmptyResults: true
-
-					script {
-						if (fileExists("${ALLURE_RESULTS_PATH}")) {
-							try {
-								allure([
-									includeProperties: false,
-									jdk: '',
-									results: [[path: "${ALLURE_RESULTS_PATH}"]],
-									reportBuildPolicy: 'ALWAYS'
-								])
-							} catch (ignored) {
-								echo "Allure Jenkins plugin не настроен — пропускаю публикацию отчёта."
-							}
-						} else {
-							echo "Папка ${ALLURE_RESULTS_PATH} не найдена — пропускаю публикацию Allure."
-						}
-					}
-				}
-			}
-		}
-
-		stage('Upload to Allure TestOps') {
-			when {
-				allOf {
-					expression { return params.UPLOAD_TO_TESTOPS }
-					expression { return params.ALLURE_PROJECT_ID?.trim() }
-				}
-			}
-			steps {
-				withEnv(["ALLURE_ENDPOINT=${params.ALLURE_ENDPOINT}"]) {
-					withCredentials([string(credentialsId: 'ALLURE_TOKEN', variable: 'ALLURE_TOKEN')]) {
-						sh '''
-              echo "Upload to Allure TestOps: ${ALLURE_ENDPOINT}, project ${ALLURE_PROJECT_ID}"
-              curl -sL https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64 -o allurectl
-              chmod +x allurectl
-              ./allurectl --endpoint "${ALLURE_ENDPOINT}" --token "${ALLURE_TOKEN}" results upload \
-                --project-id "${ALLURE_PROJECT_ID}" \
-                --launch-name "Jenkins #${BUILD_NUMBER} (${BRANCH_NAME}) - ${DEVICE_HOST}" \
-                --results "**/.allure-results" || true
-            '''
-					}
-				}
-			}
-		}
-	}
-
-	post {
-		always {
-			echo "Готово. Если отчёта нет — проверь, что тесты действительно стартовали и сформировали ${ALLURE_RESULTS_PATH}/"
-		}
-	}
+  post {
+    always {
+      echo "Done. If the Allure report is empty, ensure tests actually produced results in ${env.ALLURE_RESULTS}."
+    }
+  }
 }

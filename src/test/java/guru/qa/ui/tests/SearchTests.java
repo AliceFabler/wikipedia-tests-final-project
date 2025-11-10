@@ -23,8 +23,6 @@ public class SearchTests {
             убедиться, что результаты не пусты и первый результат содержит поисковое слово.
             """)
     @Issue("HOMEWORK-1530")
-//    @TmsLink("TMS-SRCH-001")
-//    @AllureId("SRCH-001")
     void successfulSearchRemoteTest() {
         // Шаг 1: Открытие главной страницы приложения
         step("Открыть главную страницу приложения");
@@ -50,8 +48,6 @@ public class SearchTests {
             убедиться, что список результатов пуст.
             """)
     @Issue("HOMEWORK-1531")
-//    @TmsLink("TMS-SRCH-002")
-//    @AllureId("SRCH-002")
     void searchNoResultsTest() {
         // Шаг 1: Открытие главной страницы приложения
         step("Открыть главную страницу приложения");
@@ -71,8 +67,6 @@ public class SearchTests {
             убедиться, что результаты не отображаются.
             """)
     @Issue("HOMEWORK-1532")
-//    @TmsLink("TMS-SRCH-003")
-//    @AllureId("SRCH-003")
     void emptySearchQueryTest() {
         // Шаг 1: Открытие главной страницы приложения
         step("Открыть главную страницу приложения");
@@ -92,8 +86,6 @@ public class SearchTests {
             убедиться, что результаты соответствуют запросу.
             """)
     @Issue("HOMEWORK-1533")
-//    @TmsLink("TMS-SRCH-004")
-//    @AllureId("SRCH-004")
     void manualSearchTest() {
         // Шаг 1: Открыть страницу поиска
         step("Открыть страницу поиска");
@@ -113,8 +105,6 @@ public class SearchTests {
             убедиться, что выдача изменилась согласно фильтрам.
             """)
     @Issue("HOMEWORK-1534")
-//    @TmsLink("TMS-SRCH-005")
-//    @AllureId("SRCH-005")
     void filterSearchTest() {
         // Шаг 1: Открыть страницу поиска
         step("Открыть страницу поиска");
@@ -134,8 +124,6 @@ public class SearchTests {
             убедиться, что отображается сообщение об ошибке.
             """)
     @Issue("HOMEWORK-1535")
-//    @TmsLink("TMS-SRCH-006")
-//    @AllureId("SRCH-006")
     void invalidSearchTest() {
         // Шаг 1: Открыть страницу поиска
         step("Открыть страницу поиска");
