@@ -9,6 +9,7 @@ pipeline {
 
 	parameters {
 		choice(name: 'RUN', choices: ['ui', 'api', 'manual'], description: 'Что запускать')
+		string(name: 'UI_TESTS', defaultValue: 'guru.qa.ui.tests.*', description: 'Фильтр для UI: --tests "<mask>"')
 	}
 
 	stages {
@@ -19,6 +20,7 @@ pipeline {
 		stage('Init project dir') {
 			steps {
 				script {
+					// код либо в корне, либо в подкаталоге wikipedia-tests-final-project
 					env.PRJ_DIR = fileExists('wikipedia-tests-final-project') ? 'wikipedia-tests-final-project' : '.'
 				}
 			}
@@ -39,18 +41,24 @@ pipeline {
 			}
 		}
 
-		stage('UI tests (BrowserStack / remote only)') {
+		stage('UI tests (BrowserStack / remote_test)') {
 			when { expression { params.RUN == 'ui' } }
 			steps {
-				dir("${env.PRJ_DIR}") {
-					sh '''
-            set -e
-            export JAVA_HOME="${JAVA_HOME:-}"
-            [ -n "$JAVA_HOME" ] && export PATH="$JAVA_HOME/bin:$PATH" || true
+				script {
+					def uiTests = params.UI_TESTS ?: 'guru.qa.ui.tests.*'
+					dir("${env.PRJ_DIR}") {
+						sh '''
+              set -e
+              export JAVA_HOME="${JAVA_HOME:-}"
+              [ -n "$JAVA_HOME" ] && export PATH="$JAVA_HOME/bin:$PATH" || true
 
-            # only remote: BrowserStack creds/remoteUrl + device/os_version берутся из auth.properties / remote.properties
-            ./gradlew clean test               --tests "guru.qa.ui.tests.*"               -DdeviceHost=remote               -Denv=remote               -Dallure.results.directory=.allure-results               --no-daemon --stacktrace --info
-          '''
+              # Только remote через BrowserStack. Конфиги — из auth.properties / remote.properties.
+              ./gradlew clean remote_test \
+                --tests "''' + uiTests + '''" \
+                -Dallure.results.directory=.allure-results \
+                --no-daemon --stacktrace --info
+            '''
+					}
 				}
 			}
 			post {
@@ -72,7 +80,10 @@ pipeline {
             export JAVA_HOME="${JAVA_HOME:-}"
             [ -n "$JAVA_HOME" ] && export PATH="$JAVA_HOME/bin:$PATH" || true
 
-            ./gradlew clean test               --tests "guru.qa.api.tests.*"               -Dallure.results.directory=.allure-results               --no-daemon --stacktrace --info
+            ./gradlew clean test \
+              --tests "guru.qa.api.tests.*" \
+              -Dallure.results.directory=.allure-results \
+              --no-daemon --stacktrace --info
           '''
 				}
 			}
@@ -109,17 +120,15 @@ pipeline {
 		stage('Upload to Allure TestOps') {
 			steps {
 				script {
-					def projDir = env.PRJ_DIR
-					def resultsDir = "${projDir}/.allure-results"
+					def projDir   = env.PRJ_DIR
+					def results   = "${projDir}/.allure-results"
 					def propsPath = "${projDir}/src/test/resources/testops.properties"
 
-					if (!fileExists(resultsDir)) {
-						echo "No .allure-results — skip TestOps upload"
-						return
+					if (!fileExists(results)) {
+						echo "No .allure-results — skip TestOps upload"; return
 					}
 					if (!fileExists(propsPath)) {
-						echo "No testops.properties — skip TestOps upload"
-						return
+						echo "No testops.properties — skip TestOps upload"; return
 					}
 
 					def propsText = readFile(file: propsPath, encoding: 'UTF-8')
@@ -130,12 +139,12 @@ pipeline {
 						line ? line.substring(line.indexOf('=') + 1).trim() : ""
 					}
 
-					env.ALLURE_ENDPOINT    = val('allure.endpoint')
-					env.ALLURE_PROJECT_ID  = val('allure.project.id')
-					env.ALLURE_TOKEN       = val('allure.token')
-					def ln                 = val('allure.launch.name')
+					env.ALLURE_ENDPOINT   = val('allure.endpoint')
+					env.ALLURE_PROJECT_ID = val('allure.project.id')
+					env.ALLURE_TOKEN      = val('allure.token')
+					def ln                = val('allure.launch.name')
 
-					// Подстановка Jenkins-переменных из шаблона файла
+					// Подставляем Jenkins-переменные в шаблон из файла
 					ln = ln.replace('${env.JOB_NAME}', env.JOB_NAME ?: '')
 					ln = ln.replace('${env.BUILD_NUMBER}', env.BUILD_NUMBER ?: '')
 					env.ALLURE_LAUNCH_NAME = ln
@@ -147,7 +156,8 @@ pipeline {
             mkdir -p tools
             if [ ! -x tools/allurectl ]; then
               echo "Downloading allurectl..."
-              curl -sSL -o tools/allurectl                 https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64
+              curl -sSL -o tools/allurectl \
+                https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64
               chmod +x tools/allurectl
             fi
 
