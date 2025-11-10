@@ -5,6 +5,7 @@ pipeline {
 		timestamps()
 		buildDiscarder(logRotator(numToKeepStr: '20'))
 		timeout(time: 60, unit: 'MINUTES')
+		skipDefaultCheckout() // сами управляем чекаутом, чтобы можно было чистить воркспейс
 	}
 
 	parameters {
@@ -13,6 +14,13 @@ pipeline {
 	}
 
 	stages {
+
+		stage('Clean workspace') {
+			steps {
+				echo 'Wiping workspace...'
+				deleteDir() // гарантированно чистим всё, включая прошлые артефакты/результаты
+			}
+		}
 
 		stage('Checkout') {
 			steps { checkout scm }
@@ -43,13 +51,28 @@ pipeline {
 			}
 		}
 
+		stage('Pre-clean project outputs') {
+			steps {
+				dir("${env.PRJ_DIR}") {
+					sh '''
+            set -e
+            echo "[pre-clean] Removing .allure-results and all build directories..."
+            rm -rf .allure-results || true
+            # удаляем все build/ во всех модулях (без захода внутрь найденных build)
+            find . -type d -name build -prune -exec rm -rf {} + || true
+            # на всякий случай — локальные вложенные .allure-results, если где-то есть
+            find . -type d -name ".allure-results" -prune -exec rm -rf {} + || true
+          '''
+				}
+			}
+		}
+
 		stage('UI tests (BrowserStack / remote_test)') {
 			when { expression { params.RUN == 'ui' } }
 			steps {
 				script {
 					def uiTests = params.UI_TESTS ?: 'guru.qa.ui.tests.*'
 					dir("${env.PRJ_DIR}") {
-						// triple-double quotes — подставляем переменную uiTests в команду
 						sh """
               set -e
               export JAVA_HOME="\${JAVA_HOME:-}"
@@ -105,6 +128,7 @@ pipeline {
 				dir("${env.PRJ_DIR}") {
 					sh '''
             set -e
+            rm -rf .allure-results || true
             mkdir -p .allure-results
             echo '{"manual":true}' > .allure-results/executor.json
           '''
@@ -137,18 +161,17 @@ pipeline {
 						line ? line.substring(line.indexOf('=') + 1).trim() : ""
 					}
 
-					// Приоритет: переменные окружения Jenkins (если заданы) > testops.properties
+					// Приоритет: ENV > testops.properties
 					env.ALLURE_ENDPOINT   = (env.ALLURE_ENDPOINT   ?: val('allure.endpoint'))
 					env.ALLURE_PROJECT_ID = (env.ALLURE_PROJECT_ID ?: val('allure.project.id'))
 					env.ALLURE_TOKEN      = (env.ALLURE_TOKEN      ?: val('allure.token'))
 
-					def ln = (env.ALLURE_LAUNCH_NAME ?: val('allure.launch.name'))
-					ln = (ln ?: '')
+					def ln = (env.ALLURE_LAUNCH_NAME ?: val('allure.launch.name')) ?: ''
 					ln = ln.replace('${env.JOB_NAME}',    env.JOB_NAME    ?: '')
 					.replace('${env.BUILD_NUMBER}', env.BUILD_NUMBER ?: '')
 					env.ALLURE_LAUNCH_NAME = ln
 
-					// Флаг небезопасного TLS (временный обход, если у эндпоинта просрочен сертификат)
+					// Временный обход TLS-проблем: allure.insecure=true даёт -i в allurectl
 					def insecureFromFile = (val('allure.insecure') ?: '').toLowerCase() == 'true'
 					env.ALLURE_INSECURE = (env.ALLURE_INSECURE?.toLowerCase() == 'true' || insecureFromFile) ? 'true' : 'false'
 
@@ -164,7 +187,6 @@ pipeline {
                 exit 0
               fi
 
-              # Требуем curl для загрузки allurectl при необходимости
               if ! command -v curl >/dev/null 2>&1; then
                 echo "curl is not installed — cannot download allurectl"
                 exit 2
