@@ -18,7 +18,6 @@ pipeline {
 
 	options {
 		timestamps()
-		ansiColor('xterm')
 		buildDiscarder(logRotator(numToKeepStr: '30'))
 		disableConcurrentBuilds()
 		timeout(time: 60, unit: 'MINUTES')
@@ -258,7 +257,7 @@ pipeline {
 
 	post {
 		always {
-			echo "Готово. Если Allure пуст — проверь, что тесты записали результаты в ${env.ALLURE_RESULTS}."
+			echo "Готово. Если Allure пуст — проверь, что тесты записали результаты в ${ALLURE_RESULTS}."
 		}
 	}
 }
