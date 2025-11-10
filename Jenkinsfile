@@ -5,7 +5,7 @@ pipeline {
 		timestamps()
 		buildDiscarder(logRotator(numToKeepStr: '20'))
 		timeout(time: 60, unit: 'MINUTES')
-		skipDefaultCheckout() // сами управляем чекаутом, чтобы можно было чистить воркспейс
+		skipDefaultCheckout() // сами чекаутим после wipe
 	}
 
 	parameters {
@@ -18,7 +18,7 @@ pipeline {
 		stage('Clean workspace') {
 			steps {
 				echo 'Wiping workspace...'
-				deleteDir() // гарантированно чистим всё, включая прошлые артефакты/результаты
+				deleteDir() // гарантированная чистка всего
 			}
 		}
 
@@ -29,7 +29,6 @@ pipeline {
 		stage('Init project dir') {
 			steps {
 				script {
-					// код либо в корне, либо в подкаталоге wikipedia-tests-final-project
 					env.PRJ_DIR = fileExists('wikipedia-tests-final-project') ? 'wikipedia-tests-final-project' : '.'
 					echo "PRJ_DIR = ${env.PRJ_DIR}"
 				}
@@ -41,11 +40,17 @@ pipeline {
 				dir("${env.PRJ_DIR}") {
 					sh '''
             set -e
-            export JAVA_HOME="${JAVA_HOME:-}"
+            # Изолируем кэш Gradle в рабочей директории (она чистится каждый билд)
+            export GRADLE_USER_HOME="${WORKSPACE}/.gradle"
+            mkdir -p "${GRADLE_USER_HOME}"
+
+            export JAVA_HOME="${JAVA_HOME:-/opt/java/openjdk}"
             [ -n "$JAVA_HOME" ] && export PATH="$JAVA_HOME/bin:$PATH" || true
+
             java -version || true
             chmod +x ./gradlew || true
             ./gradlew --version || true
+            echo "GRADLE_USER_HOME=${GRADLE_USER_HOME}"
           '''
 				}
 			}
@@ -58,9 +63,9 @@ pipeline {
             set -e
             echo "[pre-clean] Removing .allure-results and all build directories..."
             rm -rf .allure-results || true
-            # удаляем все build/ во всех модулях (без захода внутрь найденных build)
+            # Все build/ во всех модулях (без захода внутрь)
             find . -type d -name build -prune -exec rm -rf {} + || true
-            # на всякий случай — локальные вложенные .allure-results, если где-то есть
+            # Любые вложенные .allure-results (если вдруг есть)
             find . -type d -name ".allure-results" -prune -exec rm -rf {} + || true
           '''
 				}
@@ -75,13 +80,15 @@ pipeline {
 					dir("${env.PRJ_DIR}") {
 						sh """
               set -e
-              export JAVA_HOME="\${JAVA_HOME:-}"
+              export GRADLE_USER_HOME="\${WORKSPACE}/.gradle"
+              export JAVA_HOME="\${JAVA_HOME:-/opt/java/openjdk}"
               [ -n "\$JAVA_HOME" ] && export PATH="\$JAVA_HOME/bin:\$PATH" || true
 
               ./gradlew clean remote_test \\
                 --tests "${uiTests}" \\
                 -Dallure.results.directory=.allure-results \\
-                --no-daemon --stacktrace --info
+                --no-daemon --stacktrace --info \\
+                --no-build-cache --rerun-tasks
             """
 					}
 				}
@@ -102,13 +109,15 @@ pipeline {
 				dir("${env.PRJ_DIR}") {
 					sh '''
             set -e
-            export JAVA_HOME="${JAVA_HOME:-}"
+            export GRADLE_USER_HOME="${WORKSPACE}/.gradle"
+            export JAVA_HOME="${JAVA_HOME:-/opt/java/openjdk}"
             [ -n "$JAVA_HOME" ] && export PATH="$JAVA_HOME/bin:$PATH" || true
 
             ./gradlew clean test \
               --tests "guru.qa.api.tests.*" \
               -Dallure.results.directory=.allure-results \
-              --no-daemon --stacktrace --info
+              --no-daemon --stacktrace --info \
+              --no-build-cache --rerun-tasks
           '''
 				}
 			}
@@ -153,7 +162,7 @@ pipeline {
 					if (!fileExists(results))   { echo "No .allure-results — skip TestOps upload"; return }
 					if (!fileExists(propsPath)) { echo "No testops.properties — skip TestOps upload"; return }
 
-					// читаем свойства из файла
+					// читаем свойства
 					def propsText = readFile(file: propsPath, encoding: 'UTF-8')
 					def lines = propsText.readLines()
 					def val = { key ->
@@ -161,7 +170,7 @@ pipeline {
 						line ? line.substring(line.indexOf('=') + 1).trim() : ""
 					}
 
-					// Приоритет: ENV > testops.properties
+					// Приоритет: ENV > файл
 					env.ALLURE_ENDPOINT   = (env.ALLURE_ENDPOINT   ?: val('allure.endpoint'))
 					env.ALLURE_PROJECT_ID = (env.ALLURE_PROJECT_ID ?: val('allure.project.id'))
 					env.ALLURE_TOKEN      = (env.ALLURE_TOKEN      ?: val('allure.token'))
@@ -171,7 +180,6 @@ pipeline {
 					.replace('${env.BUILD_NUMBER}', env.BUILD_NUMBER ?: '')
 					env.ALLURE_LAUNCH_NAME = ln
 
-					// Временный обход TLS-проблем: allure.insecure=true даёт -i в allurectl
 					def insecureFromFile = (val('allure.insecure') ?: '').toLowerCase() == 'true'
 					env.ALLURE_INSECURE = (env.ALLURE_INSECURE?.toLowerCase() == 'true' || insecureFromFile) ? 'true' : 'false'
 
