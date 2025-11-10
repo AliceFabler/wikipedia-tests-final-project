@@ -29,46 +29,50 @@ import java.util.regex.Pattern;
 @Slf4j
 public class BrowserstackDriver implements WebDriverProvider {
 
+    private static final String FREE_FALLBACK_DEVICE = "Google Pixel 3";
+    private static final String FREE_FALLBACK_OS     = "9.0";
+
     @Override
     public @NotNull WebDriver createDriver(@Nullable Capabilities incoming) {
         // Owner merges: System props, ENV, classpath:${env}.properties, classpath:auth/remote.properties
-        AuthConfig auth = ConfigFactory.create(AuthConfig.class, System.getProperties());
+        AuthConfig auth   = ConfigFactory.create(AuthConfig.class, System.getProperties());
         RemoteConfig mobile = ConfigFactory.create(RemoteConfig.class, System.getProperties());
 
         URL hubUrl = toUrl(auth.getRemoteUrl(), "remoteUrl");
 
-        // 1) W3C caps (Appium 3): appium:* + bstack:options
+        // 1) W3C caps (Appium 3): platformName (топ-уровень) + appium:* + bstack:options
         MutableCapabilities caps = incoming == null ? new MutableCapabilities() : new MutableCapabilities(incoming);
-        putIfAbsent(caps, "platformName", "Android");
+        putIfAbsent(caps, "platformName", "Android");              // W3C стандарт
         putIfAbsent(caps, "appium:automationName", "UiAutomator2");
 
         String appProperty = Objects.toString(mobile.getApp(), "").trim();
         if (appProperty.isEmpty()) {
             throw new IllegalStateException("remote.properties: 'app' пустой. Укажи bs://<app-id> или путь к APK внутри репо.");
         }
-
         String appForBs = resolveAppForBrowserStack(appProperty, auth);
         caps.setCapability("appium:app", appForBs);
 
         Map<String, Object> bstack = new HashMap<>();
         req(bstack, "deviceName", mobile.getDevice(), "remote.properties: 'device' пустой");
-        req(bstack, "osVersion", mobile.getOsVersion(), "remote.properties: 'os_version' пустой");
+        req(bstack, "osVersion",  mobile.getOsVersion(), "remote.properties: 'os_version' пустой");
 
         putIfNotBlank(bstack, "projectName", mobile.getProject());
-        putIfNotBlank(bstack, "buildName", mobile.getBuild());
+        putIfNotBlank(bstack, "buildName",   mobile.getBuild());
         putIfNotBlank(bstack, "sessionName", mobile.getSessionName());
 
+        // Версия Appium на стороне BS
         putIfNotBlank(bstack, "appiumVersion", nullTo(mobile.getAppiumVersion(), "2.19.0"));
+        // Полезные флаги BrowserStack
 //        putIfNotBlank(bstack, "networkLogs", nullTo(mobile.getNetworkLogs(), "true"));
-        putIfNotBlank(bstack, "debug",       nullTo(mobile.getDebug(), "true"));
-        putIfNotBlank(bstack, "video",       nullTo(mobile.getVideo(), "true"));
+        putIfNotBlank(bstack, "debug",       nullTo(mobile.getDebug(),       "true"));
+        putIfNotBlank(bstack, "video",       nullTo(mobile.getVideo(),       "true"));
 
-        // pass-through: -Dbstack.* -> внутрь bstack:options; -Dappium:* -> caps
+        // Pass-through: -Dbstack.* → внутрь bstack:options;  -Dappium:* → в caps
         propagateSystemPropsToBstackOptions(bstack, "bstack.");
         propagatePrefixedSystemProps(caps, "appium:");
 
-        // креды (для SDK/совместимости)
-        putIfNotBlank(bstack, "userName", auth.getUserName());
+        // Креды (совместимость с SDK и YAML)
+        putIfNotBlank(bstack, "userName",  auth.getUserName());
         putIfNotBlank(bstack, "accessKey", auth.getKey());
 
         caps.setCapability("bstack:options", bstack);
@@ -76,26 +80,36 @@ public class BrowserstackDriver implements WebDriverProvider {
         log.info("=== BrowserStack session ===");
         log.info("Hub: {}", hubUrl);
         log.info("Project/Build/Name: {}/{}/{}", mobile.getProject(), mobile.getBuild(), mobile.getSessionName());
-        log.info("Device: {} / OS {}", mobile.getDevice(), mobile.getOsVersion());
+        log.info("Device: {} / OS {}", bstack.get("deviceName"), bstack.get("osVersion"));
         log.info("App: {}", appForBs);
         log.info("User: {} / Key: {}", mask(auth.getUserName()), mask(auth.getKey()));
 
+        boolean freeFallbackEnabled = !"false".equalsIgnoreCase(System.getProperty("bs.freePlan.fallback", "true"));
+
         try {
             return new RemoteWebDriver(hubUrl, caps);
-        } catch (RuntimeException e) {
-            log.error("""
-                      Failed to create RemoteWebDriver for BrowserStack.
-                      Check:
-                        • remoteUrl='{}'
-                        • app='{}'
-                        • device='{}', os_version='{}'
-                        • credentials user='{}'
-                        • bstack:options={}
-                      Cause: {}
-                      """,
-                    hubUrl, appForBs, mobile.getDevice(), mobile.getOsVersion(),
-                    auth.getUserName(), bstack, e.toString(), e);
-            throw new IllegalStateException("BrowserStack driver creation failed. See logs.", e);
+        } catch (RuntimeException first) {
+            if (freeFallbackEnabled && isFreePlanDeviceError(first)) {
+                log.warn("BrowserStack Free plan limitation detected — retrying on {} / {}",
+                        FREE_FALLBACK_DEVICE, FREE_FALLBACK_OS);
+                // переключаем девайс/ОС в уже собранных bstack:options и пробуем ещё раз
+                @SuppressWarnings("unchecked")
+                Map<String, Object> bs = (Map<String, Object>) caps.getCapability("bstack:options");
+                if (bs != null) {
+                    bs.put("deviceName", FREE_FALLBACK_DEVICE);
+                    bs.put("osVersion",  FREE_FALLBACK_OS);
+                    // пометим сессию в дашборде
+                    String sName = Objects.toString(bs.get("sessionName"), "UI");
+                    bs.put("sessionName", sName + " (free fallback)");
+                    caps.setCapability("bstack:options", bs);
+                }
+                try {
+                    return new RemoteWebDriver(hubUrl, caps);
+                } catch (RuntimeException second) {
+                    throw wrap(second, hubUrl, mobile, auth, caps);
+                }
+            }
+            throw wrap(first, hubUrl, mobile, auth, caps);
         }
     }
 
@@ -131,11 +145,11 @@ public class BrowserstackDriver implements WebDriverProvider {
     private static String uploadApkToBrowserStack(Path apk, AuthConfig auth) {
         log.info("Uploading APK to BrowserStack: {}", apk);
         try {
-            String boundary = "----BSFormBoundary" + UUID.randomUUID();
-            byte[] fileBytes = Files.readAllBytes(apk);
-            String filename = apk.getFileName().toString();
+            String boundary   = "----BSFormBoundary" + UUID.randomUUID();
+            byte[] fileBytes  = Files.readAllBytes(apk);
+            String filename   = apk.getFileName().toString();
 
-            // multipart вручную (Java 11 HttpClient без high-level multipart)
+            // multipart вручную (Java 11+ HttpClient)
             String partHeader = "--" + boundary + "\r\n" +
                     "Content-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\n" +
                     "Content-Type: application/octet-stream\r\n\r\n";
@@ -182,6 +196,34 @@ public class BrowserstackDriver implements WebDriverProvider {
     }
 
     /* ============================ utils ============================ */
+
+    private static boolean isFreePlanDeviceError(Throwable t) {
+        String full = collectMsg(t).toLowerCase(Locale.ROOT);
+        return full.contains("not available in free plan")
+                || full.contains("available in free plan");
+    }
+
+    private static String collectMsg(Throwable t) {
+        StringBuilder sb = new StringBuilder();
+        while (t != null) {
+            if (t.getMessage() != null) sb.append(t.getMessage()).append("\n");
+            t = t.getCause();
+        }
+        return sb.toString();
+    }
+
+    private static IllegalStateException wrap(RuntimeException e, URL hubUrl, RemoteConfig mobile,
+                                              AuthConfig auth, Capabilities caps) {
+        log.error("""
+                  Failed BS session.
+                  Hub={} device={} os={} app={} user={}
+                  Caps={}
+                  Cause={}
+                  """,
+                hubUrl, mobile.getDevice(), mobile.getOsVersion(), mobile.getApp(), auth.getUserName(),
+                caps, e.toString(), e);
+        return new IllegalStateException("BrowserStack driver creation failed. See logs.", e);
+    }
 
     private static String nullTo(String v, String def) {
         return (v == null || v.isBlank()) ? def : v;
