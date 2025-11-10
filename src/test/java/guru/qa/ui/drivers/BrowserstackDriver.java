@@ -39,7 +39,7 @@ public class BrowserstackDriver implements WebDriverProvider {
 
         // 1) W3C caps (Appium 3): appium:* + bstack:options
         MutableCapabilities caps = incoming == null ? new MutableCapabilities() : new MutableCapabilities(incoming);
-        putIfAbsent(caps, "appium:platformName", "Android");
+        putIfAbsent(caps, "platformName", "Android");
         putIfAbsent(caps, "appium:automationName", "UiAutomator2");
 
         String appProperty = Objects.toString(mobile.getApp(), "").trim();
