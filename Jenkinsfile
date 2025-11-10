@@ -108,25 +108,42 @@ pipeline {
 
 		stage('Upload to Allure TestOps') {
 			steps {
+				script {
+					def projDir = env.PRJ_DIR
+					def resultsDir = "${projDir}/.allure-results"
+					def propsPath = "${projDir}/src/test/resources/testops.properties"
+
+					if (!fileExists(resultsDir)) {
+						echo "No .allure-results — skip TestOps upload"
+						return
+					}
+					if (!fileExists(propsPath)) {
+						echo "No testops.properties — skip TestOps upload"
+						return
+					}
+
+					def propsText = readFile(file: propsPath, encoding: 'UTF-8')
+					def lines = propsText.readLines()
+
+					def val = { key ->
+						def line = lines.find { it.trim().startsWith("${key}=") }
+						line ? line.substring(line.indexOf('=') + 1).trim() : ""
+					}
+
+					env.ALLURE_ENDPOINT    = val('allure.endpoint')
+					env.ALLURE_PROJECT_ID  = val('allure.project.id')
+					env.ALLURE_TOKEN       = val('allure.token')
+					def ln                 = val('allure.launch.name')
+
+					// Подстановка Jenkins-переменных из шаблона файла
+					ln = ln.replace('${env.JOB_NAME}', env.JOB_NAME ?: '')
+					ln = ln.replace('${env.BUILD_NUMBER}', env.BUILD_NUMBER ?: '')
+					env.ALLURE_LAUNCH_NAME = ln
+				}
+
 				dir("${env.PRJ_DIR}") {
-					// POSIX sh-safe вариант без bash-замен
 					sh '''
             set -e
-            [ ! -d ".allure-results" ] && { echo "No .allure-results — skip TestOps upload"; exit 0; }
-
-            PROP="src/test/resources/testops.properties"
-            [ ! -f "$PROP" ] && { echo "No testops.properties — skip TestOps upload"; exit 0; }
-
-            EP=$(grep -E '^allure.endpoint=' "$PROP" | cut -d= -f2-)
-            PID=$(grep -E '^allure.project.id=' "$PROP" | cut -d= -f2-)
-            TOK=$(grep -E '^allure.token=' "$PROP" | cut -d= -f2-)
-            LN=$(grep -E '^allure.launch.name=' "$PROP" | cut -d= -f2-)
-
-            # Подставляем Jenkins-переменные, не используя bash-расширения:
-            # заменим литералы ${env.JOB_NAME} и ${env.BUILD_NUMBER}
-            LN=$(printf '%s' "$LN" | sed 's/${env\.JOB_NAME}/__JOB__/g; s/${env\.BUILD_NUMBER}/__BUILD__/g')
-            LN=$(printf '%s' "$LN" | sed "s|__JOB__|${JOB_NAME}|g; s|__BUILD__|${BUILD_NUMBER}|g")
-
             mkdir -p tools
             if [ ! -x tools/allurectl ]; then
               echo "Downloading allurectl..."
@@ -134,12 +151,7 @@ pipeline {
               chmod +x tools/allurectl
             fi
 
-            export ALLURE_ENDPOINT="$EP"
-            export ALLURE_PROJECT_ID="$PID"
-            export ALLURE_TOKEN="$TOK"
-            export ALLURE_LAUNCH_NAME="$LN"
-
-            echo "Uploading results to Allure TestOps: endpoint=$EP project=$PID launch='$LN'"
+            echo "Uploading results to Allure TestOps: endpoint=$ALLURE_ENDPOINT project=$ALLURE_PROJECT_ID launch='$ALLURE_LAUNCH_NAME'"
             tools/allurectl upload -r .allure-results
           '''
 				}
