@@ -1,37 +1,19 @@
 pipeline {
 	agent any
-
 	options {
 		timestamps()
 		buildDiscarder(logRotator(numToKeepStr: '20'))
 		timeout(time: 60, unit: 'MINUTES')
 	}
-
 	parameters {
-		choice(name: 'RUN_TYPE', choices: ['ui', 'api', 'manual'], description: 'Что запускать: мобильные UI тесты, API тесты или ручной отчёт')
-		choice(name: 'DEVICE_HOST', choices: ['local', 'remote'], description: 'Где гонять UI: локально (Appium 3) или BrowserStack')
-		string(name: 'APPIUM_URL', defaultValue: 'http://127.0.0.1:4723', description: 'URL локального Appium (для DEVICE_HOST=local)')
-		string(name: 'APP', defaultValue: '', description: 'Путь/URL к APK/APP (если пусто — берётся из properties)')
-		string(name: 'BS_BUILD', defaultValue: 'Wikipedia UI Autotests', description: 'Имя билда в BrowserStack')
-		string(name: 'BS_DEVICE', defaultValue: 'Google Pixel 7', description: 'Девайс в BrowserStack')
-		string(name: 'BS_OS_VERSION', defaultValue: '13.0', description: 'OS version в BrowserStack')
-		string(name: 'GRADLE_ARGS', defaultValue: '--no-daemon --stacktrace --info', description: 'Доп. флаги Gradle')
+		choice(name: 'RUN', choices: ['ui', 'api', 'manual'], description: 'Что запускать')
 	}
-
 	environment {
 		JAVA_HOME = tool(name: 'JDK17', type: 'jdk')
 		PATH = "${JAVA_HOME}/bin:${PATH}"
-		BS_USER = credentials('bs_user')
-		BS_KEY  = credentials('bs_key')
 	}
-
 	stages {
-		stage('Checkout') {
-			steps {
-				checkout scm
-			}
-		}
-
+		stage('Checkout') { steps { checkout scm } }
 		stage('Env') {
 			steps {
 				dir('wikipedia-tests-final-project') {
@@ -40,73 +22,72 @@ pipeline {
 				}
 			}
 		}
-
-		stage('UI tests') {
-			when { expression { params.RUN_TYPE == 'ui' } }
+		stage('Run') {
 			steps {
-				dir('wikipedia-tests-final-project') {
-					sh """
-            ./gradlew clean test \\
-              --tests "guru.qa.ui.tests.*" \\
-              -DdeviceHost=${params.DEVICE_HOST} \\
-              -Dappium.url=${params.APPIUM_URL} \\
-              -Dapp=${params.APP} \\
-              -Dbstack.user=${BS_USER} -Dbstack.key=${BS_KEY} \\
-              -Dbstack.buildName="${params.BS_BUILD}" \\
-              -Dbstack.device="${params.BS_DEVICE}" \\
-              -Dbstack.osVersion="${params.BS_OS_VERSION}" \\
-              -Dallure.results.directory=.allure-results \\
-              ${params.GRADLE_ARGS}
-          """
+				script {
+					if (params.RUN == 'ui') {
+						dir('wikipedia-tests-final-project') {
+							sh """
+                ./gradlew clean test \\
+                  --tests "guru.qa.ui.tests.*" \\
+                  -DdeviceHost=remote \\
+                  -Denv=remote \\
+                  -Dallure.results.directory=.allure-results \\
+                  --no-daemon --stacktrace --info
+              """
+						}
+					} else if (params.RUN == 'api') {
+						dir('wikipedia-tests-final-project') {
+							sh """
+                ./gradlew clean test \\
+                  --tests "guru.qa.api.tests.*" \\
+                  -Dallure.results.directory=.allure-results \\
+                  --no-daemon --stacktrace --info
+              """
+						}
+					} else {
+						dir('wikipedia-tests-final-project') {
+							sh 'mkdir -p .allure-results && echo "{\\\"manual\\\":true}" > .allure-results/executor.json'
+						}
+					}
 				}
 			}
 			post {
 				always {
 					dir('wikipedia-tests-final-project') {
 						archiveArtifacts artifacts: '.allure-results/**', fingerprint: true, allowEmptyArchive: true
-						allure includeProperties: false, jdk: '', results: [[path: '.allure-results']]
 						junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml'
 					}
 				}
 			}
 		}
-
-		stage('API tests') {
-			when { expression { params.RUN_TYPE == 'api' } }
+		stage('Upload to Allure TestOps') {
 			steps {
 				dir('wikipedia-tests-final-project') {
-					sh """
-            ./gradlew clean test \\
-              --tests "guru.qa.api.tests.*" \\
-              -Dallure.results.directory=.allure-results \\
-              ${params.GRADLE_ARGS}
-          """
-				}
-			}
-			post {
-				always {
-					dir('wikipedia-tests-final-project') {
-						archiveArtifacts artifacts: '.allure-results/**', fingerprint: true, allowEmptyArchive: true
-						allure includeProperties: false, jdk: '', results: [[path: '.allure-results']]
-						junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml'
-					}
-				}
-			}
-		}
+					sh '''#!/usr/bin/env bash
+            set -e
+            PROP=src/test/resources/testops.properties
+            EP=$(grep -E '^allure.endpoint=' "$PROP" | cut -d= -f2-)
+            PID=$(grep -E '^allure.project.id=' "$PROP" | cut -d= -f2-)
+            TOK=$(grep -E '^allure.token=' "$PROP" | cut -d= -f2-)
+            LN=$(grep -E '^allure.launch.name=' "$PROP" | cut -d= -f2-)
+            LN="${LN//\${env.JOB_NAME}/$JOB_NAME}"
+            LN="${LN//\${env.BUILD_NUMBER}/$BUILD_NUMBER}"
 
-		stage('Manual (attach report)') {
-			when { expression { params.RUN_TYPE == 'manual' } }
-			steps {
-				dir('wikipedia-tests-final-project') {
-					sh 'mkdir -p .allure-results && echo "{\"manual\":true}" > .allure-results/executor.json'
-				}
-			}
-			post {
-				always {
-					dir('wikipedia-tests-final-project') {
-						archiveArtifacts artifacts: '.allure-results/**', fingerprint: true, allowEmptyArchive: true
-						allure includeProperties: false, jdk: '', results: [[path: '.allure-results']]
-					}
+            mkdir -p tools
+            if [[ ! -x tools/allurectl ]]; then
+              echo "Downloading allurectl..."
+              curl -sSL -o tools/allurectl https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64
+              chmod +x tools/allurectl
+            fi
+
+            export ALLURE_ENDPOINT="$EP"
+            export ALLURE_PROJECT_ID="$PID"
+            export ALLURE_TOKEN="$TOK"
+            export ALLURE_LAUNCH_NAME="$LN"
+
+            tools/allurectl upload -r .allure-results
+          '''
 				}
 			}
 		}
