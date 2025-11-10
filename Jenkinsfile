@@ -116,7 +116,6 @@ pipeline {
 				}
 			}
 		}
-
 		stage('Upload to Allure TestOps') {
 			steps {
 				script {
@@ -124,27 +123,18 @@ pipeline {
 					def results   = "${projDir}/.allure-results"
 					def propsPath = "${projDir}/src/test/resources/testops.properties"
 
-					if (!fileExists(results)) {
-						echo "No .allure-results — skip TestOps upload"; return
-					}
-					if (!fileExists(propsPath)) {
-						echo "No testops.properties — skip TestOps upload"; return
-					}
+					if (!fileExists(results)) { echo "No .allure-results — skip TestOps upload"; return }
+					if (!fileExists(propsPath)) { echo "No testops.properties — skip TestOps upload"; return }
 
 					def propsText = readFile(file: propsPath, encoding: 'UTF-8')
 					def lines = propsText.readLines()
+					def val = { key -> def line = lines.find { it.trim().startsWith("${key}=") }; line ? line.substring(line.indexOf('=') + 1).trim() : "" }
 
-					def val = { key ->
-						def line = lines.find { it.trim().startsWith("${key}=") }
-						line ? line.substring(line.indexOf('=') + 1).trim() : ""
-					}
+					env.ALLURE_ENDPOINT    = val('allure.endpoint')
+					env.ALLURE_PROJECT_ID  = val('allure.project.id')
+					env.ALLURE_TOKEN       = val('allure.token')
 
-					env.ALLURE_ENDPOINT   = val('allure.endpoint')
-					env.ALLURE_PROJECT_ID = val('allure.project.id')
-					env.ALLURE_TOKEN      = val('allure.token')
-					def ln                = val('allure.launch.name')
-
-					// Подставляем Jenkins-переменные в шаблон из файла
+					def ln = val('allure.launch.name')
 					ln = ln.replace('${env.JOB_NAME}', env.JOB_NAME ?: '')
 					ln = ln.replace('${env.BUILD_NUMBER}', env.BUILD_NUMBER ?: '')
 					env.ALLURE_LAUNCH_NAME = ln
@@ -152,18 +142,37 @@ pipeline {
 
 				dir("${env.PRJ_DIR}") {
 					sh '''
-            set -e
-            mkdir -p tools
-            if [ ! -x tools/allurectl ]; then
-              echo "Downloading allurectl..."
-              curl -sSL -o tools/allurectl \
-                https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64
-              chmod +x tools/allurectl
-            fi
+        set -e
 
-            echo "Uploading results to Allure TestOps: endpoint=$ALLURE_ENDPOINT project=$ALLURE_PROJECT_ID launch='$ALLURE_LAUNCH_NAME'"
-            tools/allurectl upload -r .allure-results
-          '''
+        # Если нет результатов или каталог пуст — пропускаем
+        if [ ! -d .allure-results ] || [ -z "$(ls -A .allure-results 2>/dev/null)" ]; then
+          echo "No results to upload — skip TestOps upload"
+          exit 0
+        fi
+
+        mkdir -p tools
+        if [ ! -x tools/allurectl ]; then
+          echo "Downloading allurectl..."
+          curl -fsSL -o tools/allurectl \
+            https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64
+          chmod +x tools/allurectl
+        fi
+
+        echo "Uploading results to Allure TestOps: endpoint=$ALLURE_ENDPOINT project=$ALLURE_PROJECT_ID launch='$ALLURE_LAUNCH_NAME'"
+
+        tools/allurectl \
+          --endpoint "$ALLURE_ENDPOINT" \
+          --token "$ALLURE_TOKEN" \
+          upload \
+          --project-id "$ALLURE_PROJECT_ID" \
+          --launch-name "$ALLURE_LAUNCH_NAME" \
+          --ci-type jenkins \
+          --job-name "${JOB_NAME:-}" \
+          --job-run-id "${BUILD_NUMBER:-}" \
+          --job-run-url "${BUILD_URL:-}" \
+          --job-uid "${JOB_NAME:-}#${BUILD_NUMBER:-}" \
+          .allure-results
+      '''
 				}
 			}
 		}
