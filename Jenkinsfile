@@ -1,8 +1,7 @@
 /*
  * Jenkinsfile — wikipedia-tests-final-project (Java 17)
  * Режимы: api | ui-remote | manual | all
- * Результаты Allure: .allure-results
- * Upload в TestOps: allurectl upload <dir>
+ * Allure: пишет в .allure-results и (опционально) грузит в TestOps через allurectl upload
  */
 pipeline {
 	agent any
@@ -19,7 +18,8 @@ pipeline {
 		booleanParam(name: 'RUN_PARALLEL', defaultValue: true, description: 'RUN_TARGET=all — параллельный запуск')
 		string(name: 'ALLURE_RESULTS_PATH', defaultValue: '.allure-results', description: 'Куда писать Allure')
 		string(name: 'GRADLE_ARGS', defaultValue: '--rerun-tasks --no-daemon', description: 'Доп. аргументы Gradle')
-		// UI (remote) overrides; если пусто — из remote.properties/auth.properties
+
+		// UI (remote) overrides; если пусто — берутся из remote.properties/auth.properties
 		string(name: 'APP', defaultValue: '', description: 'bs://… или URL APK/APP')
 		string(name: 'DEVICE', defaultValue: '', description: 'Например Google Pixel 7')
 		string(name: 'OS_VERSION', defaultValue: '', description: 'Например 13.0')
@@ -39,16 +39,23 @@ pipeline {
 				sh '''
           echo "Java: $(java -version 2>&1 | head -n1)"
           echo "Gradle Wrapper: $(./gradlew -v | head -n1)"
+
           rm -rf "${ALLURE_RESULTS}" && mkdir -p "${ALLURE_RESULTS}"
 
           for f in allure.properties api.properties auth.properties remote.properties; do
-            test -f "src/test/resources/$f" && echo "$f ✓" || (echo "$f MISSING!" && exit 1)
+            test -f "src/test/resources/$f" && echo "$f ✓" || { echo "$f MISSING!"; exit 1; }
           done
-          test -f src/test/resources/testops.properties && echo "testops.properties ✓" || echo "testops.properties not found — UPLOAD_TO_TESTOPS may be skipped"
+
+          if [ -f src/test/resources/testops.properties ]; then
+            echo "testops.properties ✓"
+          else
+            echo "testops.properties not found — UPLOAD_TO_TESTOPS may be skipped"
+          fi
         '''
 			}
 		}
 
+		// ---------- Параллельный запуск (когда RUN_TARGET=all и RUN_PARALLEL=true) ----------
 		stage('Tests (parallel)') {
 			when {
 				allOf {
@@ -66,7 +73,19 @@ pipeline {
                 ${GRADLE_ARGS}
             '''
 					}
+					post {
+						always {
+							script {
+								def cnt = sh(script: 'ls -1 "${ALLURE_RESULTS}" 2>/dev/null | wc -l || echo 0', returnStdout: true).trim()
+								echo "Files in ${env.ALLURE_RESULTS}: ${cnt}"
+							}
+							allure results: [[path: "${ALLURE_RESULTS}"]]
+							archiveArtifacts artifacts: "${ALLURE_RESULTS}/**", allowEmptyArchive: true
+							junit allowEmptyResults: true, testResults: 'build/test-results/test/*.xml'
+						}
+					}
 				}
+
 				stage('UI tests (remote)') {
 					steps {
 						script {
@@ -86,7 +105,19 @@ pipeline {
               """
 						}
 					}
+					post {
+						always {
+							script {
+								def cnt = sh(script: 'ls -1 "${ALLURE_RESULTS}" 2>/dev/null | wc -l || echo 0', returnStdout: true).trim()
+								echo "Files in ${env.ALLURE_RESULTS}: ${cnt}"
+							}
+							allure results: [[path: "${ALLURE_RESULTS}"]]
+							archiveArtifacts artifacts: "${ALLURE_RESULTS}/**", allowEmptyArchive: true
+							junit allowEmptyResults: true, testResults: 'build/test-results/test/*.xml'
+						}
+					}
 				}
+
 				stage('Manual tests (tag=manual)') {
 					steps {
 						sh '''
@@ -96,18 +127,22 @@ pipeline {
                 ${GRADLE_ARGS}
             '''
 					}
-				}
-			}
-			post {
-				always {
-					echo "Files in ${ALLURE_RESULTS}: $(ls -1 ${ALLURE_RESULTS} 2>/dev/null | wc -l || echo 0)"
-					allure(results: [[path: "${ALLURE_RESULTS}"]])
-					archiveArtifacts artifacts: "${ALLURE_RESULTS}/**", allowEmptyArchive: true
-					junit allowEmptyResults: true, testResults: "build/test-results/test/*.xml"
+					post {
+						always {
+							script {
+								def cnt = sh(script: 'ls -1 "${ALLURE_RESULTS}" 2>/dev/null | wc -l || echo 0', returnStdout: true).trim()
+								echo "Files in ${env.ALLURE_RESULTS}: ${cnt}"
+							}
+							allure results: [[path: "${ALLURE_RESULTS}"]]
+							archiveArtifacts artifacts: "${ALLURE_RESULTS}/**", allowEmptyArchive: true
+							junit allowEmptyResults: true, testResults: 'build/test-results/test/*.xml'
+						}
+					}
 				}
 			}
 		}
 
+		// ---------- Последовательные стадии (когда RUN_TARGET != all или RUN_PARALLEL=false) ----------
 		stage('API tests') {
 			when {
 				anyOf {
@@ -125,10 +160,13 @@ pipeline {
 			}
 			post {
 				always {
-					echo "Files in ${ALLURE_RESULTS}: $(ls -1 ${ALLURE_RESULTS} 2>/dev/null | wc -l || echo 0)"
-					allure(results: [[path: "${ALLURE_RESULTS}"]])
+					script {
+						def cnt = sh(script: 'ls -1 "${ALLURE_RESULTS}" 2>/dev/null | wc -l || echo 0', returnStdout: true).trim()
+						echo "Files in ${env.ALLURE_RESULTS}: ${cnt}"
+					}
+					allure results: [[path: "${ALLURE_RESULTS}"]]
 					archiveArtifacts artifacts: "${ALLURE_RESULTS}/**", allowEmptyArchive: true
-					junit allowEmptyResults: true, testResults: "build/test-results/test/*.xml"
+					junit allowEmptyResults: true, testResults: 'build/test-results/test/*.xml'
 				}
 			}
 		}
@@ -160,10 +198,13 @@ pipeline {
 			}
 			post {
 				always {
-					echo "Files in ${ALLURE_RESULTS}: $(ls -1 ${ALLURE_RESULTS} 2>/dev/null | wc -l || echo 0)"
-					allure(results: [[path: "${ALLURE_RESULTS}"]])
+					script {
+						def cnt = sh(script: 'ls -1 "${ALLURE_RESULTS}" 2>/dev/null | wc -l || echo 0', returnStdout: true).trim()
+						echo "Files in ${env.ALLURE_RESULTS}: ${cnt}"
+					}
+					allure results: [[path: "${ALLURE_RESULTS}"]]
 					archiveArtifacts artifacts: "${ALLURE_RESULTS}/**", allowEmptyArchive: true
-					junit allowEmptyResults: true, testResults: "build/test-results/test/*.xml"
+					junit allowEmptyResults: true, testResults: 'build/test-results/test/*.xml'
 				}
 			}
 		}
@@ -185,10 +226,13 @@ pipeline {
 			}
 			post {
 				always {
-					echo "Files in ${ALLURE_RESULTS}: $(ls -1 ${ALLURE_RESULTS} 2>/dev/null | wc -l || echo 0)"
-					allure(results: [[path: "${ALLURE_RESULTS}"]])
+					script {
+						def cnt = sh(script: 'ls -1 "${ALLURE_RESULTS}" 2>/dev/null | wc -l || echo 0', returnStdout: true).trim()
+						echo "Files in ${env.ALLURE_RESULTS}: ${cnt}"
+					}
+					allure results: [[path: "${ALLURE_RESULTS}"]]
 					archiveArtifacts artifacts: "${ALLURE_RESULTS}/**", allowEmptyArchive: true
-					junit allowEmptyResults: true, testResults: "build/test-results/test/*.xml"
+					junit allowEmptyResults: true, testResults: 'build/test-results/test/*.xml'
 				}
 			}
 		}
@@ -202,11 +246,12 @@ pipeline {
           if [ ! -d "${ALLURE_RESULTS}" ]; then
             echo "No results dir: ${ALLURE_RESULTS}"; exit 1
           fi
-          echo "Results count: $(ls -1 ${ALLURE_RESULTS} | wc -l)"
-          ls -1 ${ALLURE_RESULTS} | head -n 20 || true
+          echo "Results count: $(ls -1 "${ALLURE_RESULTS}" | wc -l)"
+          ls -1 "${ALLURE_RESULTS}" | head -n 20 || true
 
           if [ ! -f src/test/resources/testops.properties ]; then
-            echo "testops.properties not found — nothing to upload"; exit 1
+            echo "testops.properties not found — skip upload"
+            exit 0
           fi
 
           ENDPOINT=$(grep -E '^allure\\.endpoint=' src/test/resources/testops.properties | sed 's/^allure\\.endpoint=//' | tr -d '\\r' | xargs)
@@ -215,20 +260,16 @@ pipeline {
           LAUNCH=$(grep -E '^allure\\.launch\\.name=' src/test/resources/testops.properties | sed 's/^allure\\.launch\\.name=//' | tr -d '\\r' | xargs || true)
           [ -z "${LAUNCH:-}" ] && LAUNCH="wiki-mobile:${JOB_NAME} #${BUILD_NUMBER}"
 
-          echo "Endpoint: $ENDPOINT"
-          echo "Project : $PROJECT_ID"
-          echo "Token len: ${#TOKEN}"
-
           [ -z "$ENDPOINT" ] && { echo "endpoint empty"; exit 1; }
           [ -z "$PROJECT_ID" ] && { echo "projectId empty"; exit 1; }
           [ -z "$TOKEN" ] && { echo "token empty"; exit 1; }
 
-          os=$(uname -s | tr A-Z a-z)
+          os=$(uname -s | tr 'A-Z' 'a-z')
           curl -sSL "https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_${os}_amd64" -o allurectl
           chmod +x allurectl
-          ./allurectl --version
+          ./allurectl --version || true
 
-          # Передадим параметры либо через env, либо флагами (CLI v2: 'upload <dir>')
+          # CLI v2: upload <dir>
           export ALLURE_ENDPOINT="$ENDPOINT"
           export ALLURE_TOKEN="$TOKEN"
           export ALLURE_PROJECT_ID="$PROJECT_ID"
@@ -251,7 +292,7 @@ pipeline {
 
 	post {
 		always {
-			echo "Готово. Если Allure пуст — проверь, что тесты реально выполнились (а не up-to-date) и что файлы в ${ALLURE_RESULTS} есть."
+			echo "Готово. Если Allure пуст — проверь, что тесты реально выполнялись (а не up-to-date) и что в ${env.ALLURE_RESULTS} есть файлы."
 		}
 	}
 }
