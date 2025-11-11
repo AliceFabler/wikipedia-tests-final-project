@@ -21,7 +21,7 @@ java {
 repositories { mavenCentral() }
 
 /* ----------------------------- Allure paths ----------------------------- */
-def allureResultsDir = layout.projectDirectory.dir(".allure-results")
+def allureResultsDir = layout.projectDirectory.dir("allure-results")
 def allureCmdHome    = layout.projectDirectory.dir(".allure/commandline")
 def allureBin = {
     def os = org.gradle.internal.os.OperatingSystem.current()
@@ -132,7 +132,7 @@ tasks.withType(Test).configureEach {
     systemProperty "deviceHost", (project.findProperty("deviceHost") ?: System.getenv("DEVICE_HOST") ?: "local").toString()
     systemProperty "platform",   (project.findProperty("platform")   ?: System.getenv("PLATFORM")     ?: "android").toString()
 
-    // Результаты Allure строго в корень (.allure-results)
+    // Результаты Allure строго в корень (allure-results)
     systemProperty "allure.results.directory", allureResultsDir.asFile.absolutePath
 
     // Фильтр по тегам: -Ptags=smoke,fast
@@ -216,7 +216,7 @@ tasks.register('tagged_test', Test) {
 
 /* -------------------- Отчёт и сервер через наш CLI ---------------------- */
 tasks.register('allureReport', Exec) {
-    group = "verification"; description = "Generate Allure report from .allure-results via local CLI"
+    group = "verification"; description = "Generate Allure report from allure-results via local CLI"
     dependsOn 'ensureAllureBin'
     inputs.dir(allureResultsDir.asFile)
     def outDir = layout.projectDirectory.dir(".allure/report").asFile
@@ -232,7 +232,7 @@ tasks.register('allureReport', Exec) {
 }
 
 tasks.register('allureServe', Exec) {
-    group = "verification"; description = "Serve Allure report from .allure-results via local CLI"
+    group = "verification"; description = "Serve Allure report from allure-results via local CLI"
     dependsOn 'ensureAllureBin'
     inputs.dir(allureResultsDir.asFile)
     doFirst {

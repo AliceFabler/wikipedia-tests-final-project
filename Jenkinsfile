@@ -61,12 +61,12 @@ pipeline {
 				dir("${env.PRJ_DIR}") {
 					sh '''
             set -e
-            echo "[pre-clean] Removing .allure-results and all build directories..."
-            rm -rf .allure-results || true
+            echo "[pre-clean] Removing allure-results and all build directories..."
+            rm -rf allure-results || true
             # Все build/ во всех модулях (без захода внутрь)
             find . -type d -name build -prune -exec rm -rf {} + || true
-            # Любые вложенные .allure-results (если вдруг есть)
-            find . -type d -name ".allure-results" -prune -exec rm -rf {} + || true
+            # Любые вложенные allure-results (если вдруг есть)
+            find . -type d -name "allure-results" -prune -exec rm -rf {} + || true
           '''
 				}
 			}
@@ -86,7 +86,7 @@ pipeline {
 
               ./gradlew clean remote_test \\
                 --tests "${uiTests}" \\
-                -Dallure.results.directory=.allure-results \\
+                -Dallure.results.directory=allure-results \\
                 --no-daemon --stacktrace --info \\
                 --no-build-cache --rerun-tasks
             """
@@ -96,7 +96,7 @@ pipeline {
 			post {
 				always {
 					dir("${env.PRJ_DIR}") {
-						archiveArtifacts artifacts: '.allure-results/**', fingerprint: true, allowEmptyArchive: true
+						archiveArtifacts artifacts: 'allure-results/**', fingerprint: true, allowEmptyArchive: true
 						junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml'
 					}
 				}
@@ -115,7 +115,7 @@ pipeline {
 
             ./gradlew clean test \
               --tests "guru.qa.api.tests.*" \
-              -Dallure.results.directory=.allure-results \
+              -Dallure.results.directory=allure-results \
               --no-daemon --stacktrace --info \
               --no-build-cache --rerun-tasks
           '''
@@ -124,7 +124,7 @@ pipeline {
 			post {
 				always {
 					dir("${env.PRJ_DIR}") {
-						archiveArtifacts artifacts: '.allure-results/**', fingerprint: true, allowEmptyArchive: true
+						archiveArtifacts artifacts: 'allure-results/**', fingerprint: true, allowEmptyArchive: true
 						junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml'
 					}
 				}
@@ -137,16 +137,16 @@ pipeline {
 				dir("${env.PRJ_DIR}") {
 					sh '''
             set -e
-            rm -rf .allure-results || true
-            mkdir -p .allure-results
-            echo '{"manual":true}' > .allure-results/executor.json
+            rm -rf allure-results || true
+            mkdir -p allure-results
+            echo '{"manual":true}' > allure-results/executor.json
           '''
 				}
 			}
 			post {
 				always {
 					dir("${env.PRJ_DIR}") {
-						archiveArtifacts artifacts: '.allure-results/**', fingerprint: true, allowEmptyArchive: true
+						archiveArtifacts artifacts: 'allure-results/**', fingerprint: true, allowEmptyArchive: true
 					}
 				}
 			}
@@ -156,10 +156,10 @@ pipeline {
 			steps {
 				script {
 					def projDir   = env.PRJ_DIR
-					def results   = "${projDir}/.allure-results"
+					def results   = "${projDir}/allure-results"
 					def propsPath = "${projDir}/src/test/resources/testops.properties"
 
-					if (!fileExists(results))   { echo "No .allure-results — skip TestOps upload"; return }
+					if (!fileExists(results))   { echo "No allure-results — skip TestOps upload"; return }
 					if (!fileExists(propsPath)) { echo "No testops.properties — skip TestOps upload"; return }
 
 					// читаем свойства
@@ -190,7 +190,7 @@ pipeline {
               date -u || true
               java -version || true
 
-              if [ ! -d .allure-results ] || [ -z "$(ls -A .allure-results 2>/dev/null)" ]; then
+              if [ ! -d allure-results ] || [ -z "$(ls -A allure-results 2>/dev/null)" ]; then
                 echo "No results to upload — skip TestOps upload"
                 exit 0
               fi
@@ -233,7 +233,7 @@ pipeline {
                 --job-run-id "${BUILD_NUMBER:-}" \
                 --job-run-url "${BUILD_URL:-}" \
                 --job-uid "${JOB_NAME:-}#${BUILD_NUMBER:-}" \
-                .allure-results
+                allure-results
             ''')
 						if (rc != 0) {
 							echo "allurectl upload failed with code ${rc} — marking build UNSTABLE."

@@ -65,7 +65,7 @@ public class TestBase {
         Configuration.timeout = 30_000;        // общий timeout ожиданий
         Configuration.pageLoadTimeout = 0L;    // неактуально для нативных экранов
         Configuration.pageLoadStrategy = "none";
-        Configuration.reportsFolder = ".allure-results"; // единое место артефактов для CI
+        Configuration.reportsFolder = "allure-results"; // единое место артефактов для CI
 
         // 3) Слушатели логов
         // 3.1) Русский красивый лог Selenide (не дублируем)
