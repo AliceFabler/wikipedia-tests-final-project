@@ -22,8 +22,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 /**
- * Параметризованные примеры для Wikipedia REST /page/summary/{title}
- * Используем DataFaker для рандомизации отбора страниц из белого списка.
+ * Позитивные проверки эндпоинта {@code GET /page/summary/{title}}.
+ *
+ * <p>Содержит:
+ * <ul>
+ *   <li>Смоук-набор для фиксированных статей;</li>
+ *   <li>Параметризованный набор для случайного подмножества популярных страниц
+ *   с детерминированным перемешиванием на основе {@link Faker}.</li>
+ * </ul>
  */
 @Epic("Wikipedia REST API")
 @Feature("Page Summary")
@@ -35,6 +41,12 @@ public class SummaryTest {
 
     private final WikipediaApi api = new WikipediaApi();
 
+    /**
+     * Смоук-проверка сводки для фиксированного набора страниц.
+     *
+     * @param title заголовок статьи (пример: {@code Sweden})
+     * @param lang  язык ответа (пример: {@code en})
+     */
     @ParameterizedTest(name = "Сводка для статьи \"{0}\" → 200 JSON, lang={1}")
     @CsvSource({
             "Sweden,en",
@@ -44,7 +56,7 @@ public class SummaryTest {
     @DisplayName("REST /page/summary: сводка по фиксированным страницам (EN)")
     @Description("""
             GET /page/summary/{title} (lang={1}) для белого списка статей →
-            проверяем: 200 + корректный заголовок (нормализованный) + язык ответа и непустой extract.
+            проверяем: 200 + нормализованный заголовок + язык ответа + непустой extract.
             """)
     @Issue("HOMEWORK-1536")
     @AllureId("40943")
@@ -57,7 +69,12 @@ public class SummaryTest {
         assertThat(summary.getExtract()).as("Краткое описание не пустое").isNotBlank();
     }
 
-    /** Источник параметров с Faker: случайный порядок из белого списка популярных статей */
+    /**
+     * Источник параметров: случайное подмножество популярных страниц
+     * с детерминированным перемешиванием на основе {@link Faker}.
+     *
+     * @return поток аргументов (title, lang)
+     */
     static Stream<Arguments> randomPopularPages() {
         Faker faker = new Faker();
         List<String> whitelist = List.of(
@@ -70,20 +87,25 @@ public class SummaryTest {
                 "Appium",
                 "Selenium_(software)"
         );
-        // Перемешаем детерминированно на основе Faker, чтобы прогон был воспроизводимым в рамках одного запуска
         long seed = faker.random().nextLong();
         List<String> shuffled = new ArrayList<>(whitelist);
         Collections.shuffle(shuffled, new Random(seed));
         return shuffled.stream().limit(3).map(t -> arguments(t, "en"));
     }
 
+    /**
+     * Динамическая проверка сводки для случайного поднабора whitelist.
+     *
+     * @param title заголовок статьи
+     * @param lang  язык ответа
+     */
     @ParameterizedTest(name = "Dynamic: сводка для \"{0}\" → 200 JSON, lang={1}")
     @MethodSource("randomPopularPages")
     @Severity(SeverityLevel.NORMAL)
     @DisplayName("REST /page/summary: сводка по случайному подмножеству популярных страниц (EN)")
     @Description("""
-            GET /page/summary/{title} (lang={1}) для случайного поднабора whitelist →
-            воспроизводимое перемешивание, проверяем 200 + заголовок (нормализованный) + язык и непустой extract.
+            GET /page/summary/{title} (lang={1}) →
+            проверяем: 200 + нормализованный заголовок + язык ответа + непустой extract.
             """)
     @Issue("HOMEWORK-1537")
     @AllureId("40944")
@@ -96,6 +118,12 @@ public class SummaryTest {
         assertThat(summary.getExtract()).as("Краткое описание не пустое").isNotBlank();
     }
 
+    /**
+     * Нормализация заголовка: декодирование URL и замена подчёркиваний на пробелы.
+     *
+     * @param raw исходное значение
+     * @return нормализованная строка
+     */
     private static String normalizeTitle(String raw) {
         try {
             String decoded = java.net.URLDecoder.decode(raw, java.nio.charset.StandardCharsets.UTF_8);

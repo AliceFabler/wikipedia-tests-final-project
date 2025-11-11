@@ -3,9 +3,14 @@ package guru.qa.ui.config;
 import org.aeonbits.owner.Config;
 
 /**
- * Unified source of configuration.
- * Priority: System properties (-Dkey=...), ENV (KEY=...), classpath:${env}.properties, classpath:local.properties.
- * ENV mapping works as you'd expect: "appium.server.url" ⇔ "APPIUM_SERVER_URL", "app.dir" ⇔ "APP_DIR", etc.
+ * Локальная конфигурация запуска: устройство/платформа, адрес Appium, артефакты приложения.
+ *
+ * <p><b>Источник настроек (MERGE):</b> system properties → ENV → {@code classpath:${env}.properties} → {@code classpath:local.properties}.</p>
+ *
+ * <p><b>ENV-маппинг:</b> ключ {@code appium.server.url} ⇔ переменная {@code APPIUM_SERVER_URL}, {@code app.dir} ⇔ {@code APP_DIR} и т.д.</p>
+ *
+ * <p><b>Маршрутизация APK:</b> {@code app} может быть путём к файлу или HTTP(S)-URL. Если пусто — берётся {@code app.url},
+ * скачивается в {@code app.dir} c именем {@code app.filename}.</p>
  */
 @Config.LoadPolicy(Config.LoadType.MERGE)
 @Config.Sources({
@@ -16,46 +21,43 @@ import org.aeonbits.owner.Config;
 })
 public interface LocalConfig extends Config {
 
-    // --- Device / platform ---
+    /** Версия платформы устройства (например, {@code 14}). */
     @Key("platformVersion")
     String getPlatformVersion();
 
+    /** Имя/модель локального девайса/эмулятора. */
     @Key("deviceName")
     String getDeviceName();
 
+    /** Android applicationId (package). */
     @Key("appPackage")
     String getAppPackage();
 
+    /** Android launcher activity. */
     @Key("appActivity")
     String getAppActivity();
 
-    // --- Appium server ---
+    /** Адрес локального Appium сервера. */
     @Key("appium.server.url")
     @DefaultValue("http://127.0.0.1:4723/wd/hub")
     String getAppiumServerUrl();
 
-    // --- Unified APK pointer ---
-    // Single key that may be: absolute/relative file path OR HTTP(S) URL.
-    // Examples:
-    //   -Dapp=/abs/path/app.apk
-    //   -Dapp=https://example.com/app.apk
-    //   APP=/abs/path/app.apk
-    //   app=... (in local.properties / remote.properties)
+    /** Унифицированный указатель на приложение: путь к APK/IPA или HTTP(S)-URL. */
     @Key("app")
     @DefaultValue("")
     String getApp();
 
-    // --- APK folder (where we cache/download APKs if "app" is URL or empty) ---
+    /** Директория для хранения/кеша APK. */
     @Key("app.dir")
     @DefaultValue("src/test/resources/apps")
     String getAppDir();
 
-    // --- APK filename (used when "app" is empty or URL has no filename) ---
+    /** Имя файла APK по умолчанию (если URL без имени или {@code app} пуст). */
     @Key("app.filename")
     @DefaultValue("app-alpha-universal-release.apk")
     String getAppFilename();
 
-    // --- Default APK URL (used when "app" is empty) ---
+    /** URL APK по умолчанию для автозагрузки при пустом {@code app}. */
     @Key("app.url")
     @DefaultValue("https://github.com/wikimedia/apps-android-wikipedia/releases/download/latest/app-alpha-universal-release.apk")
     String getAppUrl();

@@ -2,6 +2,13 @@ package guru.qa.ui.config;
 
 import org.aeonbits.owner.Config;
 
+/**
+ * Удалённая конфигурация запуска (например, BrowserStack/облачный грид).
+ *
+ * <p><b>Источник настроек (MERGE):</b> system properties → ENV → {@code classpath:${env}.properties} → {@code classpath:remote.properties}.</p>
+ *
+ * <p>Поддерживает указание приложения, целевого устройства/ОС, метаданных сессии и параметров провайдера.</p>
+ */
 @Config.LoadPolicy(Config.LoadType.MERGE)
 @Config.Sources({
         "system:properties",
@@ -11,64 +18,57 @@ import org.aeonbits.owner.Config;
 })
 public interface RemoteConfig extends Config {
 
-    // ---- App under test ----
-    /** bs://<app-id> или публичный URL на APK/IPA */
+    /** Идентификатор/URL приложения: {@code bs://<app-id>} или публичный HTTP(S)-URL. */
     @Key("app")
     @DefaultValue("bs://sample.app")
     String getApp();
 
-    // ---- Target device ----
-    /** Например: Google Pixel 7 */
+    /** Целевое устройство (пример: {@code Google Pixel 7}). */
     @Key("device")
     @DefaultValue("Google Pixel 7")
     String getDevice();
 
-    /** Например: 13.0 */
+    /** Версия ОС устройства (пример: {@code 13.0}). */
     @Key("os_version")
     @DefaultValue("13.0")
     String getOsVersion();
 
-    // ---- Session meta (используется для bstack:options) ----
+    /** Название проекта (отображается в провайдере). */
     @Key("project")
     @DefaultValue("Wikipedia Mobile")
     String getProject();
 
+    /** Название сборки/билда. Поддерживаются переменные окружения CI. */
     @Key("build")
     @DefaultValue("CI ${env.JOB_NAME} #${env.BUILD_NUMBER}")
     String getBuild();
 
+    /** Имя сессии. Поддерживаются переменные окружения CI. */
     @Key("name")
     @DefaultValue("UI ${env.JOB_NAME} #${env.BUILD_NUMBER}")
     String getSessionName();
 
-    // ---- BrowserStack / Appium настройки ----
-    /** Версия Appium на стороне BrowserStack */
+    /** Версия Appium на стороне провайдера. */
     @Key("appiumVersion")
     @DefaultValue("2.19.0")
     String getAppiumVersion();
 
-//    /** Включить сетевые логи в BrowserStack (bstack:options.networkLogs) */
-//    @Key("networkLogs")
-//    @DefaultValue("true")
-//    String getNetworkLogs();
-
-    /** Включить debug на BrowserStack (bstack:options.debug) */
+    /** Включить расширенный debug у провайдера. */
     @Key("debug")
     @DefaultValue("true")
     String getDebug();
 
-    /** Включить видео на BrowserStack (bstack:options.video) */
+    /** Включить запись видео у провайдера. */
     @Key("video")
     @DefaultValue("true")
     String getVideo();
 
-    // ---- (опционально) для заполнения appium:* если понадобится из конфигов ----
-    /** Прокидывается как appium:platformName (дефолт в драйвере — Android) */
+    /** Значение для {@code appium:platformName} (если требуется прокинуть явно). */
     @Key("platform")
     @DefaultValue("android")
     String getPlatform();
 
-    /** Прокидывается как appium:automationName (дефолт в драйвере — UiAutomator2) */
+    /** Значение для {@code appium:automationName} (если требуется прокинуть явно). */
     @Key("automation")
     @DefaultValue("uiautomator2")
     String getAutomation();

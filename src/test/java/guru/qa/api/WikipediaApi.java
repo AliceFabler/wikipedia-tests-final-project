@@ -6,24 +6,27 @@ import guru.qa.api.spec.ApiSpecs;
 import static io.restassured.RestAssured.given;
 
 /**
- * Небольшой слой API поверх Rest-Assured.
+ * Тонкая обёртка над Rest-Assured для Wikimedia REST API.
+ *
+ * <p>Содержит методы вызова эндпоинтов и десериализации ответов в модели.
  */
 public class WikipediaApi {
 
     /**
      * Получить краткое описание статьи.
-     * @param title заголовок статьи (например, "Sweden")
-     * @param lang  язык (например, "en")
-     * @return десериализованная модель PageSummary
+     *
+     * @param title заголовок статьи (например, {@code "Sweden"})
+     * @param lang  язык (например, {@code "en"})
+     * @return десериализованная модель {@link PageSummary}
      */
     public PageSummary getPageSummary(String title, String lang) {
         return given()
                 .spec(ApiSpecs.wikiRequestSpec())
                 .header("Accept-Language", lang)
                 .pathParam("title", title)
-        .when()
+                .when()
                 .get("/page/summary/{title}")
-        .then()
+                .then()
                 .spec(ApiSpecs.okJsonSpec())
                 .extract().as(PageSummary.class);
     }

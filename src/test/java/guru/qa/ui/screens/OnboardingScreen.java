@@ -17,11 +17,25 @@ import static guru.qa.ui.allure.Steps.step;
 import static io.appium.java_client.AppiumBy.id;
 import static io.appium.java_client.AppiumBy.xpath;
 
+/**
+ * Экран онбординга Wikipedia (Android).
+ *
+ * <p><b>Назначение:</b> верификация и прохождение 4 слайдов онбординга:
+ * проверки заголовков/описаний (RU/EN), индикатора страниц, изображений,
+ * кнопок Skip/Continue/Get started и списка языков на первом слайде.</p>
+ *
+ * <p><b>Инварианты:</b> Appium 3 + UiAutomator2 (XPath 2.0), Selenide-Appium;
+ * только устойчивые локаторы (id / XPath2); ожидания через {@code should*}.
+ * Правило клика: {@code visible=true && enabled=true && attribute(clickable)=true}.</p>
+ *
+ * <p><b>EN:</b> Onboarding screen Page Object for Wikipedia Android. Verifies and
+ * completes the 4-slide flow with RU/EN titles/subtitles, page indicator, images,
+ * and language list. Uses stable ids/XPath2 and project clickability rule.</p>
+ */
 @SuppressWarnings({"UnusedReturnValue", "BooleanMethodIsAlwaysInverted"})
 @Slf4j
 public class OnboardingScreen {
 
-    // ====== Короткие эталоны (уникальные фрагменты RU/EN) ======
     private static final String[] S1_TITLE = {"Свободная энциклопедия", "The Free Encyclopedia"};
     private static final String[] S1_SUB = {"Мы нашли следующие языки", "We’ve found the following on your device"};
     private static final String[] BTN_ADD = {"Добавить или удалить язык", "Add or edit languages"};
@@ -35,7 +49,6 @@ public class OnboardingScreen {
     private static final String[] S4_TITLE = {"Данные и конфиденциальность", "Data & Privacy"};
     private static final String[] S4_SUB = {"не нужно предоставлять личную информацию", "not have to provide personal information"};
 
-    // ---------- Elements ----------
     private final SelenideAppiumElement onboardingPager = $(id("org.wikipedia.alpha:id/fragment_onboarding_pager_container"));
     private final SelenideAppiumElement title = $(id("org.wikipedia.alpha:id/primaryTextView"));
     private final SelenideAppiumElement subtitle = $(id("org.wikipedia.alpha:id/secondaryTextView"));
@@ -47,11 +60,10 @@ public class OnboardingScreen {
     private final SelenideAppiumElement centeredImage = $(id("org.wikipedia.alpha:id/imageViewCentered"));
     private final SelenideAppiumElement languagesList = $(id("org.wikipedia.alpha:id/languagesList"));
 
-    // стало (ленивый доступ при использовании, без вызовов в конструкторе):
-            private SelenideAppiumElement tabExplore() {
-          return App.components().bottomTabBar.tabExplore;
-        }
-    // ---------- Indicator helpers ----------
+    private SelenideAppiumElement tabExplore() {
+        return App.components().bottomTabBar.tabExplore;
+    }
+
     private static String dotXpath(int index) {
         return "//android.widget.HorizontalScrollView[@resource-id='org.wikipedia.alpha:id/view_onboarding_page_indicator']"
                 + "/android.widget.LinearLayout/android.widget.LinearLayout[" + index + "]";
@@ -61,7 +73,6 @@ public class OnboardingScreen {
         return $(xpath(dotXpath(index)));
     }
 
-    // ---------- Helpers ----------
     private static void clickWhenReady(SelenideAppiumElement el, String name) {
         step("Кликаем: " + name + " (visible+enabled+clickable)", () ->
                 el.shouldBe(Condition.visible.because(name + " должна быть видима"))
@@ -75,12 +86,10 @@ public class OnboardingScreen {
         try {
             String t = btn.getText();
             if (!t.isBlank()) return t;
-        } catch (RuntimeException ignored) {
-        }
+        } catch (RuntimeException ignored) {}
         try {
             return btn.$(AppiumBy.xpath(".//android.widget.TextView")).getText();
-        } catch (RuntimeException ignored) {
-        }
+        } catch (RuntimeException ignored) {}
         return "";
     }
 
@@ -114,12 +123,19 @@ public class OnboardingScreen {
         return languagesList.$$(id("org.wikipedia.alpha:id/option_label"));
     }
 
-    // ---------- State detection & visibility ----------
+    /**
+     * Проверить, что контейнер онбординга существует (экран открыт).
+     * <b>EN:</b> Returns whether onboarding container exists.
+     */
     public boolean isOpen() {
         return step("Онбординг: проверить открыт ли экран (по контейнеру пейджера)",
                 () -> onboardingPager.exists());
     }
 
+    /**
+     * Убедиться, что экран онбординга отображается.
+     * <b>EN:</b> Assert onboarding container is visible.
+     */
     public OnboardingScreen shouldBeVisible() {
         return step("Онбординг: экран отображается", () -> {
             step("Проверяем видимость контейнера пейджера", () ->
@@ -129,7 +145,10 @@ public class OnboardingScreen {
         });
     }
 
-    // ---------- Текстовые проверки ----------
+    /**
+     * Проверить заголовок текущего слайда по списку эталонов (RU/EN).
+     * <b>EN:</b> Title should contain any of expected variants.
+     */
     public OnboardingScreen shouldHaveTitle(String... variants) {
         return step("Онбординг: заголовок содержит один из ожидаемых вариантов", () -> {
             step("Читаем заголовок текущего слайда", () -> {
@@ -144,6 +163,10 @@ public class OnboardingScreen {
         });
     }
 
+    /**
+     * Проверить описание текущего слайда по списку эталонов (RU/EN).
+     * <b>EN:</b> Subtitle should contain any of expected variants.
+     */
     public OnboardingScreen shouldHaveSubtitle(String... variants) {
         return step("Онбординг: описание содержит один из ожидаемых вариантов", () -> {
             step("Читаем подзаголовок текущего слайда", () -> {
@@ -158,7 +181,10 @@ public class OnboardingScreen {
         });
     }
 
-    // ---------- Indicator ----------
+    /**
+     * Проверить индикатор шага (1..4), включая content-desc и selected-точки.
+     * <b>EN:</b> Assert page indicator reflects given step.
+     */
     public OnboardingScreen shouldBeOnStep(int step) {
         return step("Онбординг: индикатор на шаге " + step + " из 4", () -> {
             step("Валидируем параметр step (1..4)", () -> {
@@ -182,7 +208,10 @@ public class OnboardingScreen {
         });
     }
 
-    // ---------- Image checks ----------
+    /**
+     * Проверить, что центральная картинка видима/неинтерактивна.
+     * <b>EN:</b> Central image is visible and non-interactive.
+     */
     public OnboardingScreen shouldShowCenteredImage() {
         return step("Онбординг: центральная картинка отображается и не интерактивна", () -> {
             step("Картинка видима и активна", () ->
@@ -196,6 +225,10 @@ public class OnboardingScreen {
         });
     }
 
+    /**
+     * Получить границы центральной картинки из атрибута bounds.
+     * <b>EN:</b> Returns image bounds as [x1,y1,x2,y2].
+     */
     public int[] getCenteredImageBounds() {
         return step("Онбординг: получить границы центральной картинки", () -> {
             final int[][] bb = {null};
@@ -210,6 +243,10 @@ public class OnboardingScreen {
         });
     }
 
+    /**
+     * Эвристика: картинка крупная и по центру (минимальные размеры).
+     * <b>EN:</b> Heuristic check for image size/position.
+     */
     public OnboardingScreen imageLooksCenteredAndLarge() {
         return step("Онбординг: центральная картинка крупная и расположена по центру (эвристика)", () -> {
             step("Проверяем эвристикой размеры картинки", () -> {
@@ -223,28 +260,46 @@ public class OnboardingScreen {
         });
     }
 
-    // ---------- Primitive actions ----------
+    /**
+     * Нажать Skip.
+     * <b>EN:</b> Tap “Skip”.
+     */
     public void skipAll() {
         step("Онбординг: нажать «Пропустить» (Skip)", () ->
                 clickWhenReady(skipBtn, "Кнопка «Пропустить»"));
     }
 
+    /**
+     * Нажать Continue.
+     * <b>EN:</b> Tap “Continue”.
+     */
     public void continueNext() {
         step("Онбординг: нажать «Продолжить» (Continue)", () ->
                 clickWhenReady(continueBtn, "Кнопка «Продолжить»"));
     }
 
+    /**
+     * Нажать Get started.
+     * <b>EN:</b> Tap “Get started”.
+     */
     public void getStarted() {
         step("Онбординг: нажать «Начать» (Get started)", () ->
                 clickWhenReady(getStartedBtn, "Кнопка «Начать»"));
     }
 
+    /**
+     * Открыть Add or edit languages.
+     * <b>EN:</b> Open “Add or edit languages”.
+     */
     public void openAddOrEditLanguages() {
         step("Онбординг: открыть «Добавить или удалить язык»", () ->
                 clickWhenReady(addOrEditLanguageBtn, "Кнопка «Добавить или удалить язык»"));
     }
 
-    // ---------- Composite flows ----------
+    /**
+     * Перейти к следующему слайду и дождаться смены заголовка.
+     * <b>EN:</b> Continue and wait until title changes.
+     */
     public OnboardingScreen proceedToNextSlideAwaitTitleChange() {
         return step("Онбординг: перейти к следующему слайду (ожидать смену заголовка)", () -> {
             final String prev = safeText(title);
@@ -256,6 +311,10 @@ public class OnboardingScreen {
         });
     }
 
+    /**
+     * Завершить онбординг через Skip, если доступно.
+     * <b>EN:</b> Finish via “Skip” if button is visible.
+     */
     public void skipIfVisible() {
         step("Онбординг: завершить сразу через «Пропустить», если доступно", () -> {
             if (skipBtn.is(Condition.appear, Duration.ofSeconds(5))) {
@@ -267,7 +326,10 @@ public class OnboardingScreen {
         });
     }
 
-    // ---------- Кнопка языков и список ----------
+    /**
+     * Кнопка добавления/редактирования языков доступна.
+     * <b>EN:</b> Languages button is visible/enabled/clickable.
+     */
     public OnboardingScreen shouldHaveAddLanguageButton() {
         return step("Онбординг: кнопка добавления/редактирования языков доступна", () -> {
             step("Проверяем visible + enabled + clickable", () ->
@@ -280,10 +342,13 @@ public class OnboardingScreen {
         });
     }
 
+    /**
+     * Лейбл кнопки языков соответствует одному из ожидаемых (RU/EN).
+     * <b>EN:</b> Language button label equals any expected value.
+     */
     public OnboardingScreen shouldHaveLabel(String... labels) {
         return step("Онбординг: лейбл кнопки равен одному из ожидаемых", () -> {
-            step("Читаем текст кнопки", () -> {
-            });
+            step("Читаем текст кнопки", () -> {});
             String label = readButtonLabel(addOrEditLanguageBtn);
             step("Сравниваем с эталонами: " + Arrays.toString(labels), () -> {
                 for (String expected : labels) if (expected != null && expected.equals(label)) return;
@@ -293,6 +358,10 @@ public class OnboardingScreen {
         });
     }
 
+    /**
+     * Список языков видим и не пуст.
+     * <b>EN:</b> Language list is visible and non-empty.
+     */
     public OnboardingScreen shouldHaveLanguagesList() {
         return step("Языки: список отображается и не пустой", () -> {
             step("Проверяем наличие RecyclerView и элементов", () -> {
@@ -303,7 +372,10 @@ public class OnboardingScreen {
         });
     }
 
-    // ---------- Доп. удобные методы ----------
+    /**
+     * Перейти на конкретный шаг (через Continue) и проверить индикатор.
+     * <b>EN:</b> Go to the next slide and assert indicator step.
+     */
     public OnboardingScreen nextToStep(int nextStep) {
         return step("Онбординг: перейти на шаг " + nextStep + " (через Continue, с проверкой индикатора)", () -> {
             step("Переходим на следующий слайд", this::proceedToNextSlideAwaitTitleChange);
@@ -311,6 +383,10 @@ public class OnboardingScreen {
         });
     }
 
+    /**
+     * Завершить онбординг и дождаться появления вкладки Explore.
+     * <b>EN:</b> Tap “Get started” and verify Explore appears.
+     */
     public void finish() {
         step("Онбординг: нажать «Начать» и проверить выход на главный экран", () -> {
             step("Нажимаем «Начать»", this::getStarted);
@@ -318,6 +394,10 @@ public class OnboardingScreen {
         });
     }
 
+    /**
+     * Пройти онбординг целиком (4 слайда) и завершить.
+     * <b>EN:</b> Complete full 4-slide onboarding flow.
+     */
     public void completeOnboardingFlow() {
         step("Онбординг: пройти 4 слайда и завершить (универсально RU/EN)", () -> {
             shouldBeVisible();
@@ -332,6 +412,10 @@ public class OnboardingScreen {
         });
     }
 
+    /**
+     * Проверки слайда 1 (Languages).
+     * <b>EN:</b> Verify slide 1.
+     */
     public OnboardingScreen verifySlide1() {
         return step("Онбординг: проверить слайд 1 (Языки)", () -> {
             step("Проверяем индикатор и тексты", () -> {
@@ -352,6 +436,10 @@ public class OnboardingScreen {
         });
     }
 
+    /**
+     * Проверки слайда 2 (Explore).
+     * <b>EN:</b> Verify slide 2.
+     */
     public OnboardingScreen verifySlide2() {
         return step("Онбординг: проверить слайд 2 (Explore)", () -> {
             step("Проверяем индикатор и тексты", () -> {
@@ -367,6 +455,10 @@ public class OnboardingScreen {
         });
     }
 
+    /**
+     * Проверки слайда 3 (Reading lists).
+     * <b>EN:</b> Verify slide 3.
+     */
     public OnboardingScreen verifySlide3() {
         return step("Онбординг: проверить слайд 3 (Reading lists)", () -> {
             step("Проверяем индикатор и тексты", () -> {
@@ -382,6 +474,10 @@ public class OnboardingScreen {
         });
     }
 
+    /**
+     * Проверки слайда 4 (Privacy).
+     * <b>EN:</b> Verify slide 4.
+     */
     public OnboardingScreen verifySlide4() {
         return step("Онбординг: проверить слайд 4 (Privacy)", () -> {
             step("Проверяем индикатор и тексты", () -> {

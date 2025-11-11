@@ -12,46 +12,36 @@ import static com.codeborne.selenide.appium.SelenideAppium.$;
 import static com.codeborne.selenide.appium.SelenideAppium.$$;
 import static guru.qa.ui.allure.Steps.step;
 
-/*
- * 🎯 MASTER PROMPT (final)
- * Реализовать экран результатов поиска (Wikipedia Android) на Selenide-Appium:
- *  — Appium 3 + UIAutomator2 (XPath2 по умолчанию в драйвере, но здесь не нужен);
- *  — только устойчивые локаторы: resource-id / accessibilityId; никаких UiSelector;
- *  — поля: список результатов, заголовки, текст пустого состояния, поле ввода, кнопка очистки;
- *  — шаги: shouldBeOpen(), shouldHaveAtLeast(int), openFirstResultAndRememberTitle(DataExtractor),
- *          openByExactTitle(String), openByIndex(int), readAllTitles(), clearQuery(), shouldBeEmptyState();
- *  — логи, because-сообщения, двуязычные @Step.
- */
-
 /**
- * # SearchResultPage — экран результатов поиска Wikipedia (Android)
+ * Экран результатов поиска / <b>Search results screen</b> (Wikipedia Android).
+ *
+ * <p><b>Что умеет:</b>
+ * проверка открытия списка, валидация минимального числа результатов,
+ * открытие первого результата с сохранением его заголовка, ввод запроса.</p>
+ *
+ * <p><b>Инварианты:</b> Appium 3 + UiAutomator2; только стабильные локаторы (resource-id/accessibilityId);
+ * элементы — {@code SelenideAppiumElement}/{@code SelenideAppiumCollection}; без UiSelector.</p>
+ *
+ * <p><b>EN:</b> Page Object for search results: asserts openness, checks result count,
+ * opens the first result and remembers its title, types a query. Uses stable ids only.</p>
  */
 @SuppressWarnings("UnusedReturnValue")
 @Slf4j
 public class SearchResultScreen {
 
-    // ────────────────────────────── Elements ──────────────────────────────
-
-    /**
-     * RecyclerView со списком результатов (корневой список выдачи).
-     */
     private final SelenideAppiumElement resultsList =
             $(AppiumBy.id("org.wikipedia.alpha:id/search_results_list"));
 
-    /**
-     * Коллекция заголовков карточек результата (видимая часть списка).
-     */
     private final SelenideAppiumCollection resultTitles =
             $$(AppiumBy.id("org.wikipedia.alpha:id/page_list_item_title"));
 
-    /**
-     * Поле ввода поискового запроса в тулбаре.
-     */
     private final SelenideAppiumElement searchInput =
             $(AppiumBy.id("org.wikipedia.alpha:id/search_src_text"));
 
-    // ────────────────────────────── Steps ──────────────────────────────
-
+    /**
+     * Экран результатов открыт (список существует и видим).
+     * <br><b>EN:</b> Results list exists and is visible.
+     */
     public SearchResultScreen shouldBeOpen() {
         return step("Экран результатов открыт / Results screen is open", () -> {
             resultsList
@@ -61,6 +51,12 @@ public class SearchResultScreen {
         });
     }
 
+    /**
+     * Проверить, что найдено не меньше {@code min} результатов.
+     * <br><b>EN:</b> Assert there are at least {@code min} results.
+     *
+     * @param min минимально ожидаемое количество
+     */
     public SearchResultScreen shouldHaveAtLeast(int min) {
         return step("Проверить, что результатов не меньше " + min, () -> {
             resultTitles.shouldHave(sizeGreaterThan(min - 1)
@@ -70,6 +66,12 @@ public class SearchResultScreen {
         });
     }
 
+    /**
+     * Открыть первый результат и сохранить его заголовок в {@code extractor}.
+     * <br><b>EN:</b> Open the first result and store its title to {@code extractor}.
+     *
+     * @param extractor приёмник данных (см. {@link DataExtractor})
+     */
     public void openFirstResultAndRememberTitle(final DataExtractor extractor) {
         step("Открыть первый результат и запомнить заголовок", () -> {
             shouldBeOpen().shouldHaveAtLeast(1);
@@ -81,6 +83,13 @@ public class SearchResultScreen {
         });
     }
 
+    /**
+     * Ввести поисковый запрос в поле поиска.
+     * <br><b>EN:</b> Type query into the search input.
+     *
+     * @param query строка запроса
+     * @return текущий экран
+     */
     public SearchResultScreen typeQuery(String query) {
         return step("Ввести поисковый запрос: " + query, () -> {
             searchInput.shouldBe(Condition.visible

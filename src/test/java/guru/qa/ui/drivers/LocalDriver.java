@@ -26,10 +26,28 @@ import java.time.Duration;
 import static io.appium.java_client.remote.AutomationName.ANDROID_UIAUTOMATOR2;
 import static io.appium.java_client.remote.MobilePlatform.ANDROID;
 
+/**
+ * Локальный провайдер {@link WebDriver} для Android на базе Appium (UiAutomator2).
+ *
+ * <p><b>Особенности:</b>
+ * <ul>
+ *   <li>Конфигурация через {@link LocalConfig} (MERGE: system props → env → {@code ${env}.properties} → {@code local.properties});</li>
+ *   <li>Проверка доступности Appium по {@code /status} с дружелюбными подсказками к {@code base-path};</li>
+ *   <li>Унифицированное разрешение приложения: путь/URL/автозагрузка с атомарной записью;</li>
+ *   <li>Явные опции {@link UiAutomator2Options} и развёрнутая диагностика ошибок старта.</li>
+ * </ul>
+ *
+ * <p><b>Минимальные требования:</b> запущенный Appium Server и доступный устройства/эмулятор.</p>
+ */
 @Slf4j
 public final class LocalDriver implements WebDriverProvider {
 
-    // Быстрый /status-ping с дружелюбной подсказкой по base-path
+    /**
+     * Быстро проверяет, что Appium отвечает по {@code /status}, учитывая возможный {@code /wd/hub} base-path.
+     *
+     * @param serverUrl адрес Appium
+     * @throws IllegalStateException если сервер недоступен или отвечает некорректно
+     */
     @SuppressWarnings("resource")
     private static void ensureAppiumAlive(URL serverUrl) {
         try {
@@ -37,7 +55,6 @@ public final class LocalDriver implements WebDriverProvider {
                     .connectTimeout(Duration.ofSeconds(3))
                     .build();
             String base = serverUrl.toString().replaceAll("/+$", "");
-            // пробуем оба варианта статуса — с /wd/hub и без (на случай неправильного base-path)
             var candidates = new String[]{base + "/status", base.replace("/wd/hub", "") + "/status"};
 
             boolean ok = false;
@@ -52,7 +69,7 @@ public final class LocalDriver implements WebDriverProvider {
                         ok = true;
                         break;
                     }
-                } catch (Exception ignore) {/* пробуем следующий */}
+                } catch (Exception ignore) { }
             }
             if (!ok) throw new IllegalStateException("No response from Appium");
         } catch (Exception e) {
@@ -67,6 +84,14 @@ public final class LocalDriver implements WebDriverProvider {
 
     /* ===================== App path resolution (Owner only) ===================== */
 
+    /**
+     * Преобразует строку в {@link URL} с понятной диагностикой.
+     *
+     * @param raw         исходная строка
+     * @param keyForError имя ключа для сообщения об ошибке
+     * @return валидный URL
+     * @throws IllegalArgumentException при неверном формате URL
+     */
     @SuppressWarnings("SameParameterValue")
     private static URL toUrl(String raw, String keyForError) {
         try {
@@ -79,17 +104,36 @@ public final class LocalDriver implements WebDriverProvider {
 
     /* =============================== Helpers =============================== */
 
+    /**
+     * Проверяет, является ли строка HTTP(S)-URL.
+     *
+     * @param s строка
+     * @return {@code true}, если начинается с http:// или https://
+     */
     private static boolean isHttp(String s) {
         String x = s.toLowerCase();
         return x.startsWith("http://") || x.startsWith("https://");
     }
 
+    /**
+     * Обрезает пробелы и превращает пустую строку в {@code null}.
+     *
+     * @param s исходная строка
+     * @return {@code null} или обрезанное значение
+     */
     private static String trimToNull(String s) {
         if (s == null) return null;
         String t = s.trim();
         return t.isEmpty() ? null : t;
     }
 
+    /**
+     * Извлекает имя файла из URL или возвращает значение по умолчанию.
+     *
+     * @param url исходный URL
+     * @param cfg конфигурация с дефолтным именем
+     * @return имя файла
+     */
     private static String fileNameOrDefault(String url, LocalConfig cfg) {
         try {
             String path = URI.create(url).getPath();
@@ -104,7 +148,11 @@ public final class LocalDriver implements WebDriverProvider {
     }
 
     /**
-     * Atomic download: *.part -> rename, with timeouts and redirects.
+     * Атомарная загрузка файла: скачивает во временный {@code *.part} и переименовывает.
+     *
+     * @param url    источник
+     * @param target путь сохранения
+     * @throws Exception при сетевых/IO-ошибках или неуспешном ответе
      */
     @SuppressWarnings("resource")
     private static void download(String url, Path target) throws Exception {
@@ -133,6 +181,21 @@ public final class LocalDriver implements WebDriverProvider {
         Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
+    /**
+     * Создаёт локальный {@link AndroidDriver} с опциями UiAutomator2.
+     *
+     * <p>Порядок:
+     * <ol>
+     *   <li>Загрузка {@link LocalConfig};</li>
+     *   <li>Разрешение пути к APK (локально/скачивание/кеш);</li>
+     *   <li>Проверка доступности Appium по {@code /status};</li>
+     *   <li>Сборка {@link UiAutomator2Options} и запуск сессии.</li>
+     * </ol>
+     *
+     * @param capabilities входные капабилити (не используются напрямую)
+     * @return активный {@link WebDriver}
+     * @throws IllegalStateException при ошибке запуска драйвера
+     */
     @Override
     public @NotNull WebDriver createDriver(@Nullable Capabilities capabilities) {
         LocalConfig cfg = ConfigFactory.create(LocalConfig.class, System.getProperties());
@@ -140,7 +203,6 @@ public final class LocalDriver implements WebDriverProvider {
         String appPath = resolveAppPath(cfg);
         URL serverUrl = toUrl(cfg.getAppiumServerUrl(), "appium.server.url");
 
-        // ⬇️ Новое: быстрый ping Appium перед сессией — даёт понятную причину, если сервер не запущен
         ensureAppiumAlive(serverUrl);
 
         log.info("Starting local Android driver");
@@ -179,11 +241,17 @@ public final class LocalDriver implements WebDriverProvider {
         }
     }
 
+    /**
+     * Разрешает путь к приложению из {@link LocalConfig}: напрямую, скачиванием по URL или через значения по умолчанию.
+     *
+     * @param cfg конфигурация запуска
+     * @return абсолютный путь к APK
+     * @throws IllegalStateException при невозможности найти или скачать APK
+     */
     private String resolveAppPath(LocalConfig cfg) {
         String app = trimToNull(cfg.getApp());
 
         if (app != null) {
-            // If Owner 'app' is URL -> download/cached file; else treat as filesystem path
             if (isHttp(app)) {
                 Path target = Path.of(cfg.getAppDir()).resolve(fileNameOrDefault(app, cfg));
                 try {
@@ -212,7 +280,6 @@ public final class LocalDriver implements WebDriverProvider {
             }
         }
 
-        // Fallback to defaults from Owner
         Path dir = Path.of(cfg.getAppDir());
         Path target = dir.resolve(cfg.getAppFilename());
         String url = cfg.getAppUrl();

@@ -19,25 +19,29 @@ import static com.codeborne.selenide.Selenide.closeWebDriver;
 import static com.codeborne.selenide.Selenide.open;
 import static com.codeborne.selenide.WebDriverRunner.hasWebDriverStarted;
 
-/*
- * 🎯 MASTER PROMPT — TestBase (reverted) c доработками логирования/репортинга
+/**
+ * Базовый класс мобильных UI-тестов / <b>Mobile UI Test Base</b>.
  *
- * Цель:
- *   Базовый класс мобильных UI-тестов, который:
- *   — выбирает WebDriverProvider по deviceHost ("local"/"remote");
- *   — настраивает Selenide и слушатели: AllureSelenide + русский PrettySelenideRuListener;
- *   — перед каждым тестом создаёт сессию (open());
- *   — после каждого теста делает аттачи (local: скрин+сорс; remote: сорс+видео) и закрывает сессию.
+ * <p><b>Назначение:</b> единая инициализация и завершение сессии Appium/Selenide для каждого теста:
+ * выбор драйвера по {@code deviceHost=local|remote}, настройка Selenide и лог-слушателей,
+ * создание сессии перед тестом и сбор аттачей после теста.</p>
  *
- * Важно:
- *   • Без @Step — шаги только через Allure.step(...) в тестах.
- *   • Не добавляем activateApp/terminateApp и «one-driver-per-run».
- *   • Не меняем выбранную вами схему "open/close per test".
+ * <p><b>Правила:</b>
+ * <ul>
+ *   <li>Сессия создаётся <i>на каждый тест</i> ( {@code open()} в {@link #beforeEach(TestInfo)} ).</li>
+ *   <li>Шаги — только через {@code Allure.step(...)} в тестах (без {@code @Step}).</li>
+ *   <li>Завершение: для <i>remote</i> — pageSource → close → video; для <i>local</i> — screenshot → pageSource → close.</li>
+ * </ul>
+ * </p>
+ *
+ * <p><b>EN:</b> Provides per-test session lifecycle: picks driver by {@code deviceHost},
+ * configures Selenide & listeners, opens session before each test and attaches artifacts after.</p>
  */
 public class TestBase {
 
     /**
-     * Хелпер: читаем deviceHost без изменения старой семантики (см. beforeAll).
+     * Хелпер для чтения {@code deviceHost} из System props/ENV.
+     * <br><b>EN:</b> Helper to read {@code deviceHost} from system properties or environment.
      */
     @SuppressWarnings("unused")
     private static String deviceHost() {
@@ -49,30 +53,25 @@ public class TestBase {
     }
 
     /**
-     * Глобальная конфигурация: выбор драйвера, время ожиданий, лог-листенеры.
-     * Семантика выбора deviceHost сохранена: приоритет у System.getProperty("deviceHost","local").
+     * Глобальная конфигурация Selenide и лог-слушателей.
+     * <br><b>EN:</b> Global Selenide configuration and log listeners.
      */
     @BeforeAll
     static void beforeAll() {
-        // 1) Выбор провайдера драйвера (без изменения вашей логики)
         String deviceHost = System.getProperty("deviceHost", "local");
         Configuration.browser = "remote".equalsIgnoreCase(deviceHost)
                 ? BrowserstackDriver.class.getName()
                 : LocalDriver.class.getName();
 
-        // 2) Базовые настройки Selenide для мобилки
-        Configuration.browserSize = null;      // у мобилки нет окна браузера
-        Configuration.timeout = 30_000;        // общий timeout ожиданий
-        Configuration.pageLoadTimeout = 0L;    // неактуально для нативных экранов
+        Configuration.browserSize = null;
+        Configuration.timeout = 30_000;
+        Configuration.pageLoadTimeout = 0L;
         Configuration.pageLoadStrategy = "none";
-        Configuration.reportsFolder = "allure-results"; // единое место артефактов для CI
+        Configuration.reportsFolder = "allure-results";
 
-        // 3) Слушатели логов
-        // 3.1) Русский красивый лог Selenide (не дублируем)
         if (!SelenideLogger.hasListener("pretty-ru")) {
             SelenideLogger.addListener("pretty-ru", new PrettySelenideRuListener());
         }
-        // 3.2) Интеграция с Allure: без автогенерации шагов Selenide (шаги — только в тестах)
         if (!SelenideLogger.hasListener("AllureSelenide")) {
             SelenideLogger.addListener("AllureSelenide",
                     new AllureSelenide()
@@ -84,27 +83,24 @@ public class TestBase {
     }
 
     /**
-     * Перед каждым тестом: помечаем имя теста в MDC (красивые логи) и создаём сессию.
+     * Перед тестом: сохраняем имя теста в MDC и открываем сессию.
+     * <br><b>EN:</b> Put test name into MDC and open session.
      */
     @BeforeEach
     void beforeEach(TestInfo info) {
-        // Имя теста попадёт в наш log4j2 шаблон как [%X{test}]
         if (info != null && info.getDisplayName() != null) {
             MDC.put("test", info.getDisplayName());
         }
-        // Триггер создания сессии через ваш WebDriverProvider (без URL)
         open();
     }
 
     /**
-     * После каждого теста: аттачи и закрытие сессии.
-     * • remote: pageSource → close → video(sessionId)
-     * • local: screenshot → pageSource → close
+     * После теста: собираем артефакты и закрываем сессию.
+     * <br><b>EN:</b> Collect artifacts and close session.
      */
     @AfterEach
     void afterEach() {
         if (!hasWebDriverStarted()) {
-            // Драйвер не стартовал (например, Appium недоступен) — выходим тихо
             MDC.remove("test");
             return;
         }
@@ -112,35 +108,20 @@ public class TestBase {
         String deviceHost = System.getProperty("deviceHost", "local");
         try {
             if ("remote".equalsIgnoreCase(deviceHost)) {
-                // Для BS сначала сохраним источник страницы, потом закроем сессию и приложим видео
                 String sessionId = Selenide.sessionId() != null ? Selenide.sessionId().toString() : null;
-                try {
-                    Attach.pageSource();
-                } catch (Throwable ignored) {
-                }
+                try { Attach.pageSource(); } catch (Throwable ignored) {}
                 closeWebDriver();
                 App.reset();
                 if (sessionId != null) {
-                    try {
-                        Attach.addVideo(sessionId);
-                    } catch (Throwable ignored) {
-                    }
+                    try { Attach.addVideo(sessionId); } catch (Throwable ignored) {}
                 }
             } else {
-                // Локальный прогон: скриншот и page source до закрытия
-                try {
-                    Attach.screenshotAs("Last screenshot");
-                } catch (Throwable ignored) {
-                }
-                try {
-                    Attach.pageSource();
-                } catch (Throwable ignored) {
-                }
+                try { Attach.screenshotAs("Last screenshot"); } catch (Throwable ignored) {}
+                try { Attach.pageSource(); } catch (Throwable ignored) {}
                 closeWebDriver();
                 App.reset();
             }
         } finally {
-            // Чистим контекст логов в любом случае
             MDC.remove("test");
         }
     }

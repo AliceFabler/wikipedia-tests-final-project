@@ -10,42 +10,33 @@ import static com.codeborne.selenide.appium.SelenideAppium.$;
 import static guru.qa.ui.allure.Steps.step;
 import static io.appium.java_client.AppiumBy.id;
 
-/*
- * 🎯 MASTER PROMPT (v1, from scratch)
- * Создай компонент нижней панели вкладок Wikipedia (Android) на базе Selenide-Appium:
- *   — используем SelenideAppiumElement и SelenideAppium.$(...);
- *   — публичные методы: openExplore(), openSaved(), openSearch(), openEdits(), openMore();
- *   — в методах делать Allure-шага и проверять, что таб активен (selected=true).
- *
- * 🔄 ENHANCEMENTS (v2)
- *   — вложенные Allure-шага внутри switchTo(...), читаемые логи;
- *   — никаких throws/исключений в сигнатурах, понятные действия.
- *
- * 🚀 ENHANCEMENTS (v3)
- *   — двуязычные (RU/EN) Javadoc/шаги; табы по стабильным resource-id из page source.
- */
-
 /**
- * Компонент нижней панели вкладок / <b>Bottom Tab Bar</b> (Wikipedia Android, alpha).
- * <p>Идентификаторы вкладок (из page source):</p>
+ * Нижняя панель вкладок (Bottom Tab Bar) приложения Wikipedia (Android, alpha).
+ *
+ * <p>Идентификаторы вкладок:</p>
  * <ul>
- *   <li><code>org.wikipedia.alpha:id/nav_tab_explore</code> — Лента / Explore</li>
- *   <li><code>org.wikipedia.alpha:id/nav_tab_reading_lists</code> — Сохранённые / Saved</li>
- *   <li><code>org.wikipedia.alpha:id/nav_tab_search</code> — Найти / Search</li>
- *   <li><code>org.wikipedia.alpha:id/nav_tab_edits</code> — Активность / Edits</li>
- *   <li><code>org.wikipedia.alpha:id/nav_tab_more</code> — Ещё / More</li>
+ *   <li>{@code org.wikipedia.alpha:id/nav_tab_explore} — Лента / Explore</li>
+ *   <li>{@code org.wikipedia.alpha:id/nav_tab_reading_lists} — Сохранённые / Saved</li>
+ *   <li>{@code org.wikipedia.alpha:id/nav_tab_search} — Найти / Search</li>
+ *   <li>{@code org.wikipedia.alpha:id/nav_tab_edits} — Активность / Edits</li>
+ *   <li>{@code org.wikipedia.alpha:id/nav_tab_more} — Ещё / More</li>
  * </ul>
- * <p>Каждый переход выполняет клик и верификацию <code>selected=true</code> у целевой вкладки.</p>
+ *
+ * <p><b>EN:</b> Bottom tab bar component with stable resource-ids. Each navigation asserts
+ * {@code selected=true} on the target tab.</p>
  */
 @Slf4j
 public class BottomTabBar {
 
-    // --- Локаторы вкладок (Selenide-Appium) ---
+    /** Вкладка «Лента / Explore». */
     public final SelenideAppiumElement tabExplore = $(id("org.wikipedia.alpha:id/nav_tab_explore"));
+    /** Вкладка «Сохранённые / Saved». */
     public final SelenideAppiumElement tabSaved = $(id("org.wikipedia.alpha:id/nav_tab_reading_lists"));
 
     /**
-     * Открыть «Сохранённые / Saved».
+     * Открыть вкладку «Сохранённые / Saved» и дождаться её активации.
+     *
+     * <p><b>EN:</b> Open “Saved” tab and verify it's selected.</p>
      */
     public void openSaved() {
         step("Открыть вкладку «Сохранённые / Saved»", () -> {
@@ -55,10 +46,12 @@ public class BottomTabBar {
     }
 
     /**
-     * Общая логика переключения на таб с вложенными Allure-шагами.
+     * Общая логика переключения на вкладку с вложенными шагами.
      *
-     * @param humanName человекочитаемое имя (RU/EN) для логов/отчёта
-     * @param tab       элемент вкладки (SelenideAppiumElement)
+     * <p><b>EN:</b> Internal switch routine with nested Allure steps and selection check.</p>
+     *
+     * @param humanName метка вкладки для логов/отчёта (RU/EN)
+     * @param tab       element handle for the tab
      */
     private void switchTo(final String humanName, final SelenideAppiumElement tab) {
         step("Открыть вкладку: " + humanName, () -> {
@@ -68,7 +61,6 @@ public class BottomTabBar {
                     tab.shouldBe(enabled)
             );
 
-            // ВАЖНО: лямбда, а не method reference — иначе 'click' ambiguous для Allure.step
             step("Клик по табу", () -> tab.click());
 
             step("Проверка: таб выбран (selected=true)", () -> {

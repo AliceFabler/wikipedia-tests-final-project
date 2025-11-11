@@ -11,31 +11,45 @@ import io.restassured.specification.ResponseSpecification;
 import org.aeonbits.owner.ConfigFactory;
 
 /**
- * Request/Response спецификации для API-тестов.
- * Единая точка для логирования и Allure-интеграции.
+ * Единая фабрика спецификаций для Rest-Assured.
+ *
+ * <p>Содержит:
+ * <ul>
+ *   <li>Запросную спецификацию с базовым URI/путём, логированием и Allure-интеграцией;</li>
+ *   <li>Спецификацию успешного JSON-ответа.</li>
+ * </ul>
  */
 public final class ApiSpecs {
 
     private ApiSpecs() {}
 
+    /** Конфигурация API, считываемая через Owner. */
     public static final ApiConfig cfg =
             ConfigFactory.create(ApiConfig.class, System.getProperties());
 
+    /**
+     * Спецификация запроса к Wikimedia REST API.
+     *
+     * @return преднастроенная {@link RequestSpecification}
+     */
     public static RequestSpecification wikiRequestSpec() {
         return new RequestSpecBuilder()
                 .setBaseUri(cfg.baseUrl())
                 .setBasePath("/api/rest_v1")
                 .setContentType(ContentType.JSON)
                 .setAccept(ContentType.JSON)
-                // Логи запроса/ответа сразу видны в Allure
                 .addFilter(new AllureRestAssured())
-                // Wikimedia требует «человеческий» UA
                 .addHeader("User-Agent", cfg.userAgent())
                 .log(LogDetail.URI)
                 .log(LogDetail.METHOD)
                 .build();
     }
 
+    /**
+     * Спецификация успешного JSON-ответа (HTTP 200).
+     *
+     * @return преднастроенная {@link ResponseSpecification}
+     */
     public static ResponseSpecification okJsonSpec() {
         return new ResponseSpecBuilder()
                 .expectStatusCode(200)

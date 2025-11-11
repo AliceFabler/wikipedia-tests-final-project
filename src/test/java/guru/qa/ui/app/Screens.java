@@ -3,8 +3,11 @@ package guru.qa.ui.app;
 import guru.qa.ui.screens.*;
 
 /**
- * Синглтоны экранов. ⚠️ Внутри экранов должны быть только прокси-элементы
- * (SelenideAppiumElement/SelenideAppiumCollection), не кэшируйте реальные WebElement.
+ * Контейнер синглтонов экранов приложения.
+ *
+ * <p>Требование к реализациям экранов: хранить только прокси-элементы
+ * (например, {@code SelenideAppiumElement}/{@code SelenideAppiumCollection});
+ * не кэшировать реальные {@code WebElement}.</p>
  */
 public final class Screens {
     public final OnboardingScreen onboarding = new OnboardingScreen();

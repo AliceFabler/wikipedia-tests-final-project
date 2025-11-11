@@ -1,10 +1,18 @@
 package guru.qa.ui.app;
 
 /**
- * Глобальный доступ к синглтонам экранов и компонентов.
- * Реализация — "singleton per thread" через InheritableThreadLocal:
- * • при последовательном запуске — единый набор объектов на весь ран,
- * • при параллели — безопасно изолируется по потоку.
+ * Потоковый контейнер для глобального доступа к синглтонам экранов и компонентов.
+ *
+ * <p>Модель — «singleton per thread» на основе {@link InheritableThreadLocal}:
+ * один экземпляр {@code App} на поток. При последовательном запуске —
+ * единый набор объектов на весь ран; при параллельном — изоляция по потокам.</p>
+ *
+ * <p><b>Использование:</b>
+ * <pre>{@code
+ * App.screens().explore.open();
+ * App.components().bottomTabBar.openSaved();
+ * App.reset(); // вызывать после закрытия драйвера
+ * }</pre>
  */
 public final class App {
     private static final InheritableThreadLocal<App> TL = new InheritableThreadLocal<>();
@@ -25,21 +33,26 @@ public final class App {
     }
 
     /**
-     * Доступ к синглтонам экранов
+     * Возвращает контейнер синглтонов экранов текущего потока.
+     *
+     * @return экземпляр {@link Screens}
      */
     public static Screens screens() {
         return get().screens;
     }
 
     /**
-     * Доступ к синглтонам общих компонентов
+     * Возвращает контейнер синглтонов общих компонентов текущего потока.
+     *
+     * @return экземпляр {@link Components}
      */
     public static Components components() {
         return get().components;
     }
 
     /**
-     * Сброс контейнера (вызываем после закрытия драйвера).
+     * Сбрасывает контейнер текущего потока.
+     * Рекомендуется вызывать после закрытия WebDriver.
      */
     public static void reset() {
         TL.remove();

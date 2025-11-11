@@ -5,7 +5,10 @@ import guru.qa.ui.screens.components.WikiOverlays;
 import guru.qa.ui.screens.components.WikiSnackbar;
 
 /**
- * Синглтоны общих UI-компонентов.
+ * Контейнер синглтонов общих UI-компонентов.
+ *
+ * <p>Экземпляры предназначены для повторного использования в рамках потока
+ * через {@code App.components()}.</p>
  */
 public final class Components {
     public final BottomTabBar bottomTabBar = new BottomTabBar();

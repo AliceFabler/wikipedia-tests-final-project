@@ -14,58 +14,61 @@ import static com.codeborne.selenide.appium.SelenideAppium.$;
 import static guru.qa.ui.allure.Steps.step;
 import static io.appium.java_client.AppiumBy.id;
 
-/* ============================================================================
-   🎯 MASTER PROMPT (RU) — ExploreScreen (финальная версия)
-
-   Назначение:
-   • Page Object экрана «Explore» (Wikipedia Android, alpha): поиск, объявление,
-     карточка «Wikipedia games», блок «Top read», прокрутка до нужной карточки,
-     работа с лентой по датам (day header) и сбор верхнеуровневых карточек.
-
-   Инварианты (канон проекта):
-   • Appium 3 + UIAutomator2 (W3C), XPath 2.0; ТОЛЬКО стабильные локаторы (id / accessibilityId / XPath2).
-   • Элементы — SelenideAppiumElement/Collection; без UiSelector/TouchAction/Thread.sleep.
-   • Ожидания через should* и ScrollIntoView (внутри — Selenide.Wait()).
-   • Правило клика: нажимаем только когда visible=true, enabled=true, attribute(clickable)="true" (см. clickWhenReady).
-
-   Публичные шаги (использовать в тестах):
-   • shouldBeVisible()
-   • openSearch(), tapVoiceSearch(), dismissAnnouncementIfShown()
-   • openWikipediaGames()
-   • shouldSeeTopRead(), openTopReadItem(index)
-   • scrollToCard(String... titles)                        — доскроллить до карточки по заголовку (RU/EN)
-   • shouldSeeSectionHeader(String... titles)              — проверить видимость заголовка карточки
-   • scrollToDate(String dateText)                         — доскроллить до секции нужной даты (day header)
-   • collectCardRootsForDate(String dateText)              — собрать корневые карточки за эту дату
-   • getCardRootForSectionOnDate(dateText, sectionTitles)  — корневая карточка «Section title» на конкретной дате
-   • openFeaturedArticleFirstItem()                        — открыть первый кликабельный элемент в «Featured article»
-   ============================================================================ */
-
+/**
+ * Экран «Explore» (Wikipedia Android).
+ *
+ * <p><b>Назначение:</b> Page Object ленты «Explore»: поиск, закрытие объявления,
+ * прокрутка до карточек по заголовку (RU/EN), работа с датами и открытие контента
+ * «Featured article».</p>
+ *
+ * <p><b>Инварианты проекта:</b> Appium 3 + UiAutomator2 (W3C), XPath 2.0;
+ * только стабильные локаторы (id / accessibilityId / XPath2); элементы —
+ * {@code SelenideAppiumElement}; без UiSelector/TouchAction; ожидания через
+ * {@code should*} и утилиту {@link ScrollIntoView}.</p>
+ *
+ * <p><b>Правило клика:</b> нажимаем элемент только при
+ * {@code visible=true}, {@code enabled=true}, {@code attribute(clickable)="true"}.</p>
+ *
+ * <p><b>Публичные шаги:</b>
+ * <ul>
+ *   <li>{@link #shouldBeVisible()}</li>
+ *   <li>{@link #openSearch()}</li>
+ *   <li>{@link #dismissAnnouncementIfShown()}</li>
+ *   <li>{@link #scrollToCard(String...)}</li>
+ *   <li>{@link #shouldSeeSectionHeader(String...)}</li>
+ *   <li>{@link #openFeaturedArticleFirstItem()}</li>
+ * </ul>
+ * </p>
+ *
+ * <p><b>EN:</b> Explore screen Page Object with search, announcement dismissal,
+ * scrolling to section cards by title (RU/EN), date-aware helpers, and opening the
+ * first item of “Featured article”. Clicks obey the project’s clickability rule.</p>
+ */
 @SuppressWarnings("UnusedReturnValue")
 @Slf4j
 public class ExploreScreen {
 
-    // ───────── Служебные константы заголовков ─────────
     private static final String CARD_HEADER_ID = "org.wikipedia.alpha:id/view_card_header_title";
-    // ───────── Специфичный контент «Featured article» ─────────
     private static final String FEATURED_CONTENT_ID =
             "org.wikipedia.alpha:id/view_featured_article_card_content_container";
-    // ───────── Верхняя поисковая панель ─────────
+
     private final SelenideAppiumElement searchContainer =
             $(id("org.wikipedia.alpha:id/search_container"));
-    // ───────── Объявление «Customize your Explore feed» ─────────
+
     private final SelenideAppiumElement announcementCard =
             $(id("org.wikipedia.alpha:id/view_announcement_container"));
     private final SelenideAppiumElement announcementOkBtn =
             $(id("org.wikipedia.alpha:id/view_announcement_action_negative"));
-    // ───────── Контейнер ленты ─────────
+
     private final SelenideAppiumElement feedView =
             $(id("org.wikipedia.alpha:id/feed_view"));
 
-    // ═════════════════════ Actions / Checks ═════════════════════
-
     /**
-     * Единый «кликер»: visible + enabled + attribute(clickable)=true → tap()
+     * Единый «кликер» по правилу кликабельности проекта.
+     * <p><b>EN:</b> Unified click helper that enforces visibility/enabled/clickable.</p>
+     *
+     * @param el   элемент
+     * @param name имя для сообщений ожиданий
      */
     private static void clickWhenReady(SelenideAppiumElement el, String name) {
         el.shouldBe(Condition.visible.because(name + " должен(а) быть видим(а)"))
@@ -75,6 +78,10 @@ public class ExploreScreen {
                 .tap();
     }
 
+    /**
+     * Экран «Explore» отображается: вкладка Explore существует, карточка поиска видима.
+     * <p><b>EN:</b> Verifies Explore tab presence and visible search card.</p>
+     */
     public ExploreScreen shouldBeVisible() {
         return step("Экран Explore отображается", () -> {
             App.components().bottomTabBar.tabExplore.shouldBe(Condition.exist.because("Нижняя вкладка Explore должна существовать"));
@@ -83,13 +90,19 @@ public class ExploreScreen {
         });
     }
 
+    /**
+     * Открыть поиск тапом по карточке поиска.
+     * <p><b>EN:</b> Open search by tapping the search card.</p>
+     */
     public void openSearch() {
         step("Открыть поиск (тап по карточке поиска)", () ->
                 clickWhenReady(searchContainer, "Карточка поиска"));
     }
 
-    // ───────── Дополнительно: прокрутка до карточки по заголовку (RU/EN) ─────────
-
+    /**
+     * Закрыть объявление «Customize your Explore feed» (Got it), если показано.
+     * <p><b>EN:</b> Dismiss the Explore announcement if visible.</p>
+     */
     public void dismissAnnouncementIfShown() {
         step("Закрыть объявление «Customize your Explore feed» (Got it), если показано", () -> {
             if (announcementCard.exists() && announcementCard.is(Condition.visible)) {
@@ -114,6 +127,10 @@ public class ExploreScreen {
         return $(headerBy(titles));
     }
 
+    /**
+     * Прокрутить ленту до карточки с любым из заголовков (RU/EN) и убедиться, что она видима.
+     * <p><b>EN:</b> Scroll to a card by any of the given section titles and ensure visibility.</p>
+     */
     public ExploreScreen scrollToCard(String... titles) {
         String joined = String.join(" / ", titles);
         return step("Прокрутить ленту до карточки «" + joined + "» и довести её в поле видимости", () -> {
@@ -123,8 +140,10 @@ public class ExploreScreen {
         });
     }
 
-    // ───────── Работа с датами (day header) и корневыми карточками ─────────
-
+    /**
+     * Проверить, что заголовок нужной карточки видим.
+     * <p><b>EN:</b> Assert that a section header is visible.</p>
+     */
     public ExploreScreen shouldSeeSectionHeader(String... titles) {
         String joined = String.join(" / ", titles);
         return step("Заголовок карточки «" + joined + "» видим", () -> {
@@ -133,36 +152,24 @@ public class ExploreScreen {
         });
     }
 
-    private By cardRootBySectionTitle(String... titles) {
-        // //*[@resource-id='...:id/feed_view']/android.widget.LinearLayout[descendant::*[@resource-id='...:id/view_card_header_title' and matches(lower-case(@text), '^(...)$')]]
-        String alternation = String.join("|",
-                Arrays.stream(titles)
-                        .map(s -> s.toLowerCase().replace("'", "\\'"))
-                        .toArray(String[]::new)
-        );
-        return By.xpath(
-                "//*[@resource-id='org.wikipedia.alpha:id/feed_view']" +
-                        "/android.widget.LinearLayout[" +
-                        "descendant::*[@resource-id='" + CARD_HEADER_ID + "' " +
-                        "and matches(lower-case(@text), '^(" + alternation + ")$')]]"
-        );
-    }
-
-    // ───────── Внутренние помощники ─────────
-
     /**
-     * Открыть первый кликабельный элемент внутри карточки 'Featured article'.
+     * Открыть первый кликабельный элемент карточки «Featured article».
+     * <p><b>EN:</b> Open the first clickable item inside the “Featured article” card.</p>
      */
     public void openFeaturedArticleFirstItem() {
         step("Открыть первый кликабельный элемент внутри карточки «Featured article»", () -> {
-            scrollToCard("Featured article", "избранная статья"); // гарантируем видимость
+            scrollToCard("Featured article", "случайная статья");
             SelenideAppiumElement featuredRoot =
-                    $(cardRootBySectionTitle("Featured article", "избранная статья"));
+                    $(By.xpath(
+                            "//*[@resource-id='org.wikipedia.alpha:id/feed_view']" +
+                                    "/android.widget.LinearLayout[" +
+                                    "descendant::*[@resource-id='" + CARD_HEADER_ID + "' " +
+                                    "and matches(lower-case(@text), '^(featured article|случайная статья)$')]]"
+                    ));
 
             SelenideAppiumElement firstClickable =
                     $(featuredRoot.$(id(FEATURED_CONTENT_ID)));
 
-            // Правило кликабельности проекта
             firstClickable
                     .shouldBe(Condition.visible.because("Контент 'Featured article' должен быть видим"))
                     .shouldBe(Condition.enabled.because("Контент 'Featured article' должен быть доступен"))

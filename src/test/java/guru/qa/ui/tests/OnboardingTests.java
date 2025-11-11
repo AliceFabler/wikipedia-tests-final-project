@@ -12,6 +12,18 @@ import java.util.List;
 
 import static guru.qa.ui.allure.Steps.step;
 
+/**
+ * Онбординг (Wikipedia Android) — UI-тесты.
+ *
+ * <p><b>Назначение:</b> проверить последовательность и контент онбординга,
+ * а также управление языками с первого слайда.</p>
+ *
+ * <p><b>Инварианты:</b> шаги оформлены через вложенные Allure-step; действия выполняются
+ * через Page Object’ы проекта; локаторы — стабильные (id/accessibilityId/XPath2 по месту).</p>
+ *
+ * <p><b>EN:</b> Onboarding UI tests: validate the 4-slide flow and add a language
+ * from the first slide. Steps use nested Allure steps and stable locators via Page Objects.</p>
+ */
 @Slf4j
 @Epic("Wikipedia (Android)")
 @Feature("Onboarding / Онбординг")
@@ -20,6 +32,12 @@ import static guru.qa.ui.allure.Steps.step;
 @Severity(SeverityLevel.NORMAL)
 public class OnboardingTests extends TestBase {
 
+    /**
+     * Проверить, что 4 слайда онбординга последовательно завершаются
+     * появлением и нажатием кнопки «Get started».
+     *
+     * <p><b>EN:</b> Verify the 4 onboarding slides in order ending with the “Get started” button.</p>
+     */
     @Test
     @DisplayName("Онбординг: 4 слайда последовательно завершаются кнопкой «Get started»")
     @Story("Контент и последовательность слайдов")
@@ -30,6 +48,13 @@ public class OnboardingTests extends TestBase {
         App.screens().onboarding.completeOnboardingFlow();
     }
 
+    /**
+     * Добавить язык через первый экран онбординга и убедиться,
+     * что язык появился в списке «Your languages».
+     *
+     * <p><b>EN:</b> Add a language from the first onboarding slide
+     * and verify it appears in “Your languages”.</p>
+     */
     @Test
     @DisplayName("Онбординг: добавить язык через первый экран (универсально по локализации)")
     @Story("Управление языками во время онбординга")
@@ -42,12 +67,10 @@ public class OnboardingTests extends TestBase {
             App.screens().onboarding.openAddOrEditLanguages();
         });
 
-        // Считаем актуальные языки ДО
         final List<String> before = step("Считать текущие языки (до добавления)",
                 () -> App.screens().languages.getCurrentLanguageTitles()
         );
 
-        // Переходим в Add language и выбираем первый язык
         step("Перейти в 'Add language' и выбрать первый язык из полного списка", () -> {
             App.screens().languages.tapAddLanguageCard();
             App.screens().addLanguage
@@ -55,7 +78,6 @@ public class OnboardingTests extends TestBase {
                     .selectFirstLanguageAndRemember();
         });
 
-        // Проверяем, что язык появился
         final String pickedLocal = App.screens().addLanguage.getRememberedLanguageLocal();
         before.add(pickedLocal);
 

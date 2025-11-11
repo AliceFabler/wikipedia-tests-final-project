@@ -2,140 +2,128 @@ package guru.qa.ui.utils.gestures;
 
 import com.codeborne.selenide.Selenide;
 import com.codeborne.selenide.appium.SelenideAppiumElement;
-import io.qameta.allure.Step;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.Rectangle;
 
 import java.time.Duration;
 
-/*
-================================= 🎯 MASTER PROMPT (Scroll Into View with Selenide.Wait) ===============================
+import static guru.qa.ui.allure.Steps.step;
 
-ЦЕЛЬ
-— Реализовать устойчивый «доскролл до элемента» в мобильном приложении: сначала сделать элемент видимым скроллом вниз
-  по заданному контейнеру, затем гарантировать, что элемент полностью попал в область контейнера (не обрезан).
-
-КОНТЕКСТ / ИНВАРИАНТЫ
-— Appium 3 + UIAutomator2, Java 21, Gradle; элементы — SelenideAppiumElement.
-— Стабильные локаторы: resource-id / accessibilityId / XPath 2.0 (при необходимости).
-— Жесты выполняем через AndroidMobileGestures (mobile: *Gesture). Без TouchAction / UiSelector.
-— Без Thread.sleep — только Selenide.Wait() с polling.
-
-АЛГОРИТМ
-1) Внутри Selenide.Wait(): если target НЕ виден → скроллим контейнер ВНИЗ (scrollGesture DOWN, percent=0.7) и продолжаем.
-2) Как только target виден → проверяем «полную видимость» внутри контейнера:
-      - если верх элемента выше верхней границы контейнера → небольшой скролл ВВЕРХ;
-      - если низ элемента ниже нижней границы контейнера → небольшой скролл ВНИЗ;
-   повторяем, пока элемент не окажется целиком внутри или не упрёмся в границы (scrollGesture вернёт false).
-3) Условие выхода из ожидания — элемент «полностью виден».
-
-ПАРАМЕТРЫ
-— timeout: общий таймаут ожидания; polling=250ms.
-— percentPerStep: доля высоты контейнера для шага скролла (по умолчанию 0.7 при поиске элемента; для «дотяжки» вычисляется).
-
-ОГРАНИЧЕНИЯ
-— Если контейнер исчерпал прокрутку и target так и не появился, будет TimeoutException Selenide.Wait().
-— Метод не кликает; проверка кликабельности — в ваших шагах перед кликом.
-
-=========================================================================================================================
-*/
-
+/**
+ * Утилита «доскролла» до элемента в пределах контейнера.
+ *
+ * <p>Алгоритм:
+ * <ol>
+ *   <li>Внутри {@code Selenide.Wait()} скроллим контейнер ВНИЗ, пока целевой элемент не станет видимым.</li>
+ *   <li>Когда элемент видим — «дотягиваем» его так, чтобы он полностью поместился в границы контейнера
+ *       (не обрезан сверху/снизу): при необходимости делаем короткие скроллы ВВЕРХ/ВНИЗ.</li>
+ * </ol>
+ *
+ * <p>Инварианты проекта: Appium 3 + UiAutomator2; жесты — через {@link AndroidMobileGestures};
+ * никаких {@code Thread.sleep} — только ожидания и поллинг.</p>
+ *
+ * <h3>Использование</h3>
+ * <pre>{@code
+ * ScrollIntoView.intoView(feedContainer, targetCard, Duration.ofSeconds(60));
+ * }</pre>
+ */
 @Slf4j
 @UtilityClass
 public class ScrollIntoView {
 
-    /**
-     * Удобный таймаут по умолчанию.
-     */
+    /** Таймаут по умолчанию. */
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(90);
 
-    /**
-     * Минимальная/максимальная доля высоты контейнера для «выравнивающих» скроллов.
-     */
+    /** Диапазон долей высоты контейнера для «выравнивающих» скроллов. */
     private static final double MIN_ADJUST_PERCENT = 0.15;
     private static final double MAX_ADJUST_PERCENT = 0.85;
 
     /**
-     * Главный метод: скроллит вниз, пока элемент не станет видим, затем выравнивает, чтобы он был целиком в контейнере.
+     * Прокрутить контейнер до полной видимости элемента (таймаут по умолчанию).
+     *
+     * @param scrollableContainer прокручиваемый контейнер
+     * @param target              целевой элемент
      */
-    @Step("Прокрутить контейнер до полной видимости элемента (внутри Selenide.Wait)")
     public void intoView(SelenideAppiumElement scrollableContainer, SelenideAppiumElement target) {
-        intoView(scrollableContainer, target, DEFAULT_TIMEOUT);
+        step("Прокрутить контейнер до полной видимости элемента", () ->
+                intoView(scrollableContainer, target, DEFAULT_TIMEOUT)
+        );
     }
 
     /**
-     * То же самое, но с настраиваемым таймаутом.
+     * Прокрутить контейнер до полной видимости элемента (с заданным таймаутом).
+     *
+     * @param scrollableContainer прокручиваемый контейнер
+     * @param target              целевой элемент
+     * @param timeout             общий таймаут ожидания
      */
-    @Step("Прокрутить контейнер до полной видимости элемента (таймаут: {timeout})")
-    public void intoView(SelenideAppiumElement scrollableContainer, SelenideAppiumElement target, Duration timeout) {
-        // Весь алгоритм — внутри Selenide.Wait()
-        Selenide.Wait()
-                .withTimeout(timeout)
-                .pollingEvery(Duration.ofMillis(250))
-                .until(driver -> {
-                    // 1) Если элемент ещё не виден — скроллим ВНИЗ на крупный шаг
-                    if (!safeDisplayed(target)) {
-                        boolean scrolled = AndroidMobileGestures.scrollIn(
-                                scrollableContainer, GestureDirection.DOWN, 0.5, null);
-                        log.debug("search phase: displayed=false, scrolledDown={}", scrolled);
-                        return false; // Продолжаем ждать
-                    }
+    public void intoView(SelenideAppiumElement scrollableContainer,
+                         SelenideAppiumElement target,
+                         Duration timeout) {
+        step("Прокрутить контейнер до полной видимости элемента (таймаут: " + timeout.toSeconds() + " с)", () ->
+                Selenide.Wait()
+                        .withTimeout(timeout)
+                        .pollingEvery(Duration.ofMillis(250))
+                        .until(driver -> {
+                            // 1) Фаза поиска: крутим вниз, пока элемент не станет видимым
+                            if (!safeDisplayed(target)) {
+                                boolean scrolled = AndroidMobileGestures.scrollIn(
+                                        scrollableContainer, GestureDirection.DOWN, 0.5, null);
+                                log.debug("search phase: displayed=false, scrolledDown={}", scrolled);
+                                return false;
+                            }
 
-                    // 2) Элемент виден — проверяем полную видимость в контейнере
-                    if (isFullyVisibleIn(scrollableContainer, target)) {
-                        log.debug("target is fully visible in container");
-                        return true; // Условие выполнено
-                    }
+                            // 2) Проверка полной видимости внутри контейнера
+                            if (isFullyVisibleIn(scrollableContainer, target)) {
+                                log.debug("target is fully visible in container");
+                                return true;
+                            }
 
-                    // 3) Элемент частично обрезан — дотягиваем
-                    Rectangle cr = scrollableContainer.getRect();
-                    Rectangle er = target.getRect();
-                    int containerTop = cr.getY();
-                    int containerBottom = cr.getY() + cr.getHeight();
-                    int elemTop = er.getY();
-                    int elemBottom = er.getY() + er.getHeight();
+                            // 3) Дотяжка: корректируем позицию короткими скроллами
+                            Rectangle cr = scrollableContainer.getRect();
+                            Rectangle er = target.getRect();
+                            int containerTop = cr.getY();
+                            int containerBottom = cr.getY() + cr.getHeight();
+                            int elemTop = er.getY();
+                            int elemBottom = er.getY() + er.getHeight();
 
-                    if (elemTop < containerTop) {
-                        // Верх элемента выше контейнера → лёгкий скролл ВВЕРХ
-                        double percent = clamp(((containerTop - elemTop) / (double) cr.getHeight()) + 0.1,
-                                MIN_ADJUST_PERCENT, MAX_ADJUST_PERCENT);
-                        boolean scrolledUp = AndroidMobileGestures.scrollIn(
-                                scrollableContainer, GestureDirection.UP, percent, null);
-                        log.debug("adjust phase: top overflow, percent={}, scrolledUp={}", percent, scrolledUp);
-                        return false;
-                    }
+                            if (elemTop < containerTop) {
+                                double percent = clamp(((containerTop - elemTop) / (double) cr.getHeight()) + 0.1,
+                                        MIN_ADJUST_PERCENT, MAX_ADJUST_PERCENT);
+                                boolean up = AndroidMobileGestures.scrollIn(
+                                        scrollableContainer, GestureDirection.UP, percent, null);
+                                log.debug("adjust phase: top overflow, percent={}, scrolledUp={}", percent, up);
+                                return false;
+                            }
 
-                    if (elemBottom > containerBottom) {
-                        // Низ элемента ниже контейнера → лёгкий скролл ВНИЗ
-                        double percent = clamp(((elemBottom - containerBottom) / (double) cr.getHeight()) + 0.1,
-                                MIN_ADJUST_PERCENT, MAX_ADJUST_PERCENT);
-                        boolean scrolledDown = AndroidMobileGestures.scrollIn(
-                                scrollableContainer, GestureDirection.DOWN, percent, null);
-                        log.debug("adjust phase: bottom overflow, percent={}, scrolledDown={}", percent, scrolledDown);
-                        return false;
-                    }
+                            if (elemBottom > containerBottom) {
+                                double percent = clamp(((elemBottom - containerBottom) / (double) cr.getHeight()) + 0.1,
+                                        MIN_ADJUST_PERCENT, MAX_ADJUST_PERCENT);
+                                boolean down = AndroidMobileGestures.scrollIn(
+                                        scrollableContainer, GestureDirection.DOWN, percent, null);
+                                log.debug("adjust phase: bottom overflow, percent={}, scrolledDown={}", percent, down);
+                                return false;
+                            }
 
-                    // На всякий случай: если добрались сюда, считаем, что всё ок
-                    return true;
-                });
+                            return true;
+                        })
+        );
     }
 
-    /* ============================== HELPERS ============================== */
+    // ----------------------- Helpers -----------------------
 
     private boolean safeDisplayed(SelenideAppiumElement el) {
         try {
             return el.isDisplayed();
         } catch (RuntimeException e) {
-            // На случай переотрисовки/рецикла вьюх между поллингами
+            // возможная переотрисовка между тиками поллинга
             log.trace("safeDisplayed(): transient error: {}", e.toString());
             return false;
         }
     }
 
-    /**
-     * Полная видимость: верх элемента не выше верхней границы контейнера, низ не ниже нижней границы.
-     */
+    /** Полная видимость: элемент целиком внутри вертикальных границ контейнера и видим. */
     private boolean isFullyVisibleIn(SelenideAppiumElement container, SelenideAppiumElement element) {
         Rectangle cr = container.getRect();
         Rectangle er = element.getRect();

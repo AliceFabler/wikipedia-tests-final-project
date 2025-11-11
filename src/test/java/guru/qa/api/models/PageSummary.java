@@ -4,16 +4,23 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * Часть модели ответа /page/summary/{title}.
- * Поля сведены к минимуму, остальное игнорируем.
+ * Модель части ответа для {@code GET /page/summary/{title}}.
+ *
+ * <p>Оставлены только ключевые поля, остальные игнорируются.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class PageSummary {
 
+    /** Нормализованный заголовок страницы. */
     private String title;
+
+    /** Краткое текстовое описание. Может отсутствовать. */
     private String description;
+
+    /** Расширенная краткая выжимка по статье. */
     private String extract;
 
+    /** Язык документа, возвращаемый API. */
     @JsonProperty("lang")
     private String language;
 

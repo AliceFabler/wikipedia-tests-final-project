@@ -11,8 +11,19 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Красивый русифицированный логгер Selenide-событий.
- * Совместим с Selenide 7.x: реализует только beforeEvent/afterEvent.
+ * Русифицированный «приятный» логгер событий Selenide.
+ *
+ * <p>Совместим с Selenide 7.x и использует только коллбеки
+ * {@link #beforeEvent(LogEvent)} и {@link #afterEvent(LogEvent)}.</p>
+ *
+ * <p><b>Что делает:</b>
+ * <ul>
+ *   <li>Преобразует «сырой» subject события в человеко-читаемое русское действие
+ *       (клик, ввод текста, ожидание и т.д.);</li>
+ *   <li>Обрезает слишком длинное описание элемента до {@value #MAX_ELEM} символов
+ *       с многоточием;</li>
+ *   <li>Логирует PASS/FAIL с длительностью и сообщением ошибки (если есть).</li>
+ * </ul>
  */
 public class PrettySelenideRuListener implements LogEventListener {
     private static final Logger log = LoggerFactory.getLogger("Selenide");
@@ -20,6 +31,11 @@ public class PrettySelenideRuListener implements LogEventListener {
     private static final Pattern SHOULD_RX =
             Pattern.compile("should\\s+(?<cond>.+)", Pattern.CASE_INSENSITIVE);
 
+    /**
+     * Вызывается до выполнения события: печатает стрелку, действие и (если есть) краткое описание элемента.
+     *
+     * @param e событие Selenide
+     */
     @Override
     public void beforeEvent(LogEvent e) {
         String action = toRuAction(e);
@@ -31,6 +47,11 @@ public class PrettySelenideRuListener implements LogEventListener {
         }
     }
 
+    /**
+     * Вызывается после события: печатает статус (успех/ошибка/прочее) и длительность, логирует причину при FAIL.
+     *
+     * @param e событие Selenide
+     */
     @Override
     public void afterEvent(LogEvent e) {
         String action = toRuAction(e);
@@ -45,8 +66,13 @@ public class PrettySelenideRuListener implements LogEventListener {
         }
     }
 
-    // --- helpers ---
-
+    /**
+     * Преобразует английский subject Selenide-события в русское действие.
+     * Поддерживает «should …» с извлечением условия ожидания.
+     *
+     * @param e событие
+     * @return русское описание действия (например, «Клик», «Ввод текста», «Ожидание: видимость»)
+     */
     private String toRuAction(LogEvent e) {
         String s = (e.getSubject() == null ? "" : e.getSubject()).trim();
         String low = s.toLowerCase(Locale.ROOT);
@@ -78,6 +104,12 @@ public class PrettySelenideRuListener implements LogEventListener {
         return "Действие: " + s;
     }
 
+    /**
+     * Делает строку описания элемента компактной: обрезает до {@value #MAX_ELEM} символов и добавляет многоточие.
+     *
+     * @param element исходная строка
+     * @return компактная строка или пустая, если входное значение пусто/blank
+     */
     private String concise(String element) {
         if (element == null || element.isBlank()) return "";
         String e = element.trim();

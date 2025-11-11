@@ -8,27 +8,31 @@ import lombok.extern.slf4j.Slf4j;
 import static com.codeborne.selenide.appium.SelenideAppium.$;
 import static guru.qa.ui.allure.Steps.step;
 
-/*
- * 🎯 MASTER PROMPT (final)
- * ArticleOverflowMenu:
- * — Меню по ⋮ на экране статьи; пункты выбираем по видимому тексту (XPath2, RU/EN).
- * — Методы-ярлыки для популярных пунктов.
+/**
+ * Меню «⋮» на экране статьи (Article Overflow).
+ * <p>Выбор пунктов выполняется по стабильным ресурсным идентификаторам приложения.</p>
+ *
+ * <p><b>EN:</b> Article screen overflow (⋮) menu component.
+ * Items are addressed via stable resource-ids.</p>
  */
-
 @SuppressWarnings("UnusedReturnValue")
 @Slf4j
 public class ArticleOverflowMenu {
 
-    /**
-     * Корневой контейнер дропа — достаточная проверка открытия.
-     */
+    /** Корневой контейнер drop-down — минимальная проверка открытия. */
     private final SelenideAppiumElement root =
             $(AppiumBy.id("org.wikipedia.alpha:id/overflowList"));
 
-    // Пункты меню из дампа (id внутри списка overflowList) :contentReference[oaicite:5]{index=5}
+    /** Пункт меню «Лента / Explore». */
     private final SelenideAppiumElement exploreItem =
             $(AppiumBy.id("org.wikipedia.alpha:id/page_explore"));
 
+    /**
+     * Выбрать пункт «Лента» в меню.
+     *
+     * <p><b>EN:</b> Select “Explore” in the overflow menu.</p>
+     * @return текущий объект меню
+     */
     public ArticleOverflowMenu goToExplore() {
         return step("В меню выбрать «Лента»", () -> {
             exploreItem
@@ -41,6 +45,12 @@ public class ArticleOverflowMenu {
         });
     }
 
+    /**
+     * Проверить, что оверфлоу открыт.
+     *
+     * <p><b>EN:</b> Assert that overflow menu is open.</p>
+     * @return текущий объект меню
+     */
     public ArticleOverflowMenu shouldBeOpen() {
         return step("Оверфлоу открыт", () -> {
             root.shouldBe(Condition.visible.because("Должно открыться выпадающее меню"));

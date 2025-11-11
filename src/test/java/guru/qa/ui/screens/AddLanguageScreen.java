@@ -1,27 +1,5 @@
 package guru.qa.ui.screens;
 
-/*
- * Что это за экран (структура)
- * <p>
- * Top App Bar
- * <p>
- * Левая кнопка-стрелка «назад» (ImageButton, content-desc типа Navigate up — локализуется).
- * <p>
- * Заголовок: «Add a language» (локализуется).
- * <p>
- * Иконка «поиск» справа (обычно ImageButton/ImageView, content-desc Search, локализуется).
- * <p>
- * Секция: «All languages» (локализуется).
- * <p>
- * Прокручиваемый список языков: каждая строка содержит:
- * <p>
- * Локальное самоназвание языка (например, Español, 日本語, Русский, Deutsch и т.д. — не зависит от локали устройства, т.к. это эндоним).
- * <p>
- * Английское название под ним (например, Spanish, Japanese, Russian, German).
- * <p>
- * Экран — без устойчивых resource-id на строках списка (Compose/системный экран), поэтому используем XPath 2.0 и структурные селекторы + проверку «кликабельности».
- */
-
 import com.codeborne.selenide.CollectionCondition;
 import com.codeborne.selenide.Condition;
 import com.codeborne.selenide.appium.SelenideAppiumCollection;
@@ -35,90 +13,39 @@ import static guru.qa.ui.allure.Steps.step;
 import static io.appium.java_client.AppiumBy.xpath;
 
 /**
- * <h1>AddLanguageScreen — экран «Добавить язык» (Wikipedia Android)</h1>
+ * Экран «Добавить язык» (Wikipedia Android).
  *
- * <p><b>Назначение:</b> Page Object для системного экрана выбора языков. Класс инкапсулирует:
- * проверку открытия экрана, открытие поиска, выбор языка (первого в списке, по тексту/по нескольким вариантам),
- * а также «запоминание» названий выбранного языка (эндоним и при наличии — английский экзоным).</p>
+ * <p><b>Назначение:</b> верификация открытия экрана, выбор языка (первая строка)
+ * и запоминание названий (эндоним и, при наличии, английский экзоным).
+ * Для строк списка используются структурные XPath 2.0-локаторы и правило кликабельности.</p>
  *
- * <h2>Технологический стек и инварианты проекта</h2>
- * <ul>
- *   <li>Java 21, Appium Server 3.x + UIAutomator2 (XPath 2.0), Selenide-Appium.</li>
- *   <li><b>Локаторы:</b> приоритетно id/accessibilityId, при отсутствии — <b>XPath 2.0</b> с аккуратной нормализацией текста.</li>
- *   <li><b>Запреты:</b> никаких UiSelector/TouchAction, никаких Thread.sleep (только ожидания через {@link Condition}).</li>
- *   <li><b>Кликабельность:</b> перед кликом убеждаемся, что элемент
- *   <code>displayed==true</code>, <code>enabled==true</code>, <code>attribute(clickable)==true</code>.
- *   Если контейнер «не кликабелен», пытаемся кликнуть кликабельного потомка, иначе — безопасный fallback-клик.</li>
- *   <li><b>Отчётность:</b> чистые <i>вложенные шаги Allure 3</i> через {@code Allure.step(...)} (без аннотаций {@code @Step}).</li>
- * </ul>
+ * <p><b>Инварианты:</b> Java 21, Appium 3 + UiAutomator2 (XPath 2.0), Selenide-Appium;
+ * без UiSelector/TouchAction и Thread.sleep — только {@link Condition}-ожидания.</p>
  *
- * <h2>Стратегия локализации и устойчивость</h2>
- * <ul>
- *   <li>Кнопки Back/Search находятся по <i>content-desc</i> с поддержкой EN/RU (например, «Go back/Назад», «Search/Поиск»).</li>
- *   <li>Список языков ищется <b>под секцией «All languages/Все языки»</b>. Строки — кликабельные контейнеры с TextView внутри.</li>
- * </ul>
- *
- * <h2>Публичные методы</h2>
- * <ul>
- *   <li>{@link #shouldBeOpen()} — проверяет, что экран открыт (Back видим, список не пуст), логирует пример первой строки.</li>
- *   <li>{@link #selectFirstLanguageAndRemember()} — выбирает первую строку списка и запоминает её тексты.</li>
- *   <li>{@link #getRememberedLanguagePretty()} — отформатированное имя выбранного языка (например, «Español (Spanish)»).</li>
- * </ul>
- *
- * <h2>Синхронизация и ошибки</h2>
- * <ul>
- *   <li>Только «умные» ожидания: {@code shouldBe(Condition.visible/sizeGreaterThan)}.</li>
- *   <li>При сбоях бросается {@link AssertionError} с понятным сообщением; дополнительно пишем подробный лог (debug/info/warn/error).</li>
- * </ul>
- *
- * <h2>Пример использования</h2>
- *
- * <pre>{@code
- * new AddLanguageScreen()
- *     .shouldBeOpen()
- *     .openSearch() // опционально
- *     .selectLanguageByAnyVisibleText("Русский", "Russian", "русский");
- *
- * String picked = new AddLanguageScreen().getRememberedLanguagePretty();
- * // например: "Русский (Russian)"
- * }</pre>
- *
- * <h2>Подсказки по траблшутингу</h2>
- * <ul>
- *   <li>Если список «пустой»: проверьте, что секция «All languages/Все языки» присутствует в текущем билде
- *       (в системном/Compose-экране это может меняться), и что строки действительно помечены {@code clickable='true'}.</li>
- *   <li>Если Back/Search не находятся: убедитесь, что <i>content-desc</i> действительно содержит «Go back/Назад» и «Search/Поиск».</li>
- *   <li>Если клик не проходит: часто кликается <i>дочерний</i> элемент — класс содержит безопасный fallback на кликабельного потомка.</li>
- * </ul>
- *
- * <h2>Параллельные прогоны</h2>
- * <p>Класс хранит в полях только «последний запомненный выбор»; создавайте новый инстанс на сценарий,
- * не делитесь одним объектом между потоками.</p>
+ * <p><b>Публичные методы:</b>
+ * {@link #shouldBeOpen()}, {@link #selectFirstLanguageAndRemember()}, {@link #getRememberedLanguagePretty()}.</p>
  */
 @Slf4j
 public class AddLanguageScreen {
 
     //region Locators
 
-    /**
-     * Тексты внутри строки: 1-й TextView — эндоним; последний — англ. экзоным (если есть)
-     */
+    /** Первый TextView в строке — эндоним. */
     static final String ROW_LOCAL_NAME_REL =
             ".//android.widget.TextView[normalize-space(@text)!=''][1]";
+    /** Последний TextView в строке — англ. экзоным (если есть). */
     static final String ROW_EN_NAME_REL =
             ".//android.widget.TextView[normalize-space(@text)!=''][position()=last()]";
-    /**
-     * ⬅️ Back (EN/RU) по образцу пользователя
-     */
+
+    /** Кнопка «Назад» (EN/RU) по content-desc. */
     SelenideAppiumElement backButton = $(
             xpath(
                     "//*[child::*[(contains(normalize-space(@content-desc),'Go back') or contains(normalize-space(@content-desc),'Назад'))]" +
                             " and child::*[contains(@class,'Button')]]"
             )
     );
-    /**
-     * 📃 Кликабельные строки под секцией “All languages/Все языки”
-     */
+
+    /** Кликабельные строки под секцией “All languages/Все языки”. */
     SelenideAppiumCollection languageRows = $$(
             xpath(
                     "//*[child::*[contains(normalize-space(@text),'All languages') or contains(normalize-space(@text),'Все языки')]]" +
@@ -133,22 +60,24 @@ public class AddLanguageScreen {
     String rememberedLanguageLocal;   // напр., "Español"
     @Getter
     String rememberedLanguageEnglish; // напр., "Spanish"
-
     //endregion
 
-    //region Public actions (отчётность — через Allure.step)
+    //region Helpers
 
-    /**
-     * Безопасная подстановка строки в XPath.
-     */
+    /** Безопасная подстановка строки в XPath. */
     private static String xq(String s) {
         if (s == null) return "''";
         if (!s.contains("'")) return "'" + s + "'";
         return "concat('" + s.replace("'", "',\"'\",'") + "')";
     }
 
+    //endregion
+
     /**
-     * Проверить, что экран открыт (вложенные шаги Allure).
+     * Проверить, что экран открыт: «Назад» виден, список языков не пуст.
+     *
+     * @return текущий экран
+     * @throws AssertionError если тулбар/список недоступен
      */
     public AddLanguageScreen shouldBeOpen() {
         step("Проверить, что экран «Добавить язык» открыт", () -> {
@@ -183,12 +112,12 @@ public class AddLanguageScreen {
         });
         return this;
     }
-    //endregion
-
-    //region Internals (вложенность строится в public-методах)
 
     /**
-     * Выбрать первый язык и запомнить его.
+     * Выбрать первую строку списка и запомнить тексты.
+     *
+     * @return текущий экран
+     * @throws AssertionError если список пуст или клик не удался
      */
     public AddLanguageScreen selectFirstLanguageAndRemember() {
         step("Выбрать первый язык и запомнить его", () -> {
@@ -227,14 +156,12 @@ public class AddLanguageScreen {
                 log.debug("[AddLanguage] Клик по «{}» выполнен (прямой).", humanName);
                 return;
             }
-            // fallback: кликабельный потомок
             SelenideAppiumElement child = $(el.$(xpath(".//*[@clickable='true' or @focusable='true'][1]")));
             if (child.exists() && child.is(Condition.visible) && isClickReady(child)) {
                 child.click();
                 log.debug("[AddLanguage] Клик по «{}» выполнен через кликабельного потомка.", humanName);
                 return;
             }
-            // финальный fallback
             el.click();
             log.debug("[AddLanguage] Клик по «{}» выполнен (fallback).", humanName);
         } catch (Throwable t) {
@@ -257,9 +184,7 @@ public class AddLanguageScreen {
         log.info("[AddLanguage] Выбор завершён ({}): {}", context, getRememberedLanguagePretty());
     }
 
-    /**
-     * displayed && enabled && clickable
-     */
+    /** Правило клика: displayed && enabled && clickable. */
     private boolean isClickReady(SelenideAppiumElement el) {
         try {
             return el.isDisplayed()
@@ -271,9 +196,7 @@ public class AddLanguageScreen {
         }
     }
 
-    /**
-     * Поиск строки по одному тексту.
-     */
+    /** Найти строку по одному видимому тексту под секцией «All languages». */
     private SelenideAppiumElement languageRowUnderAllLanguagesByText(String languageText) {
         String header = "//*[child::*[contains(normalize-space(@text),'All languages') or contains(normalize-space(@text),'Все языки')]]";
         String xp = header
@@ -282,9 +205,7 @@ public class AddLanguageScreen {
         return $(xpath(xp));
     }
 
-    /**
-     * Поиск строки по любому из вариантов текста.
-     */
+    /** Найти строку по любому из вариантов текста под секцией «All languages». */
     private SelenideAppiumElement languageRowUnderAllLanguagesByAnyText(String... variants) {
         if (variants == null || variants.length == 0) {
             throw new IllegalArgumentException("Нужно передать хотя бы один вариант текста");
@@ -304,9 +225,7 @@ public class AddLanguageScreen {
         return $(xpath(xp));
     }
 
-    /**
-     * Вытянуть текст дочернего узла внутри строки по относительному XPath.
-     */
+    /** Безопасно вычитать текст дочернего узла внутри строки по относительному XPath. */
     private String safeGetText(SelenideAppiumElement row, String relativeXpath) {
         try {
             return row.$(xpath(relativeXpath)).getText();
@@ -317,7 +236,9 @@ public class AddLanguageScreen {
     }
 
     /**
-     * Красивый вывод запомнённого языка.
+     * Красивое имя выбранного языка: {@code "Español (Spanish)"} или только эндоним.
+     *
+     * @return строка для отчёта/логов или {@code null}, если ничего не запомнено
      */
     public String getRememberedLanguagePretty() {
         if (rememberedLanguageLocal == null || rememberedLanguageLocal.isBlank()) return null;
@@ -325,6 +246,4 @@ public class AddLanguageScreen {
                 ? rememberedLanguageLocal + " (" + rememberedLanguageEnglish + ")"
                 : rememberedLanguageLocal;
     }
-
-    //endregion
 }
