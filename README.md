@@ -285,7 +285,7 @@ wikipedia-tests-final-project
 
 К каждому тесту в отчете прилагается видео прогона.
 <p align="center">
-  <img title="Selenoid Video" src="media/video-mobile.gif" alt="">
+  <img width="50%" title="Selenoid Video" src="media/video-mobile.gif" alt="">
 </p>
 
 ### Мини-чек-лист
