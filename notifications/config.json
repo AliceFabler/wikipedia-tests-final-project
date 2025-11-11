@@ -1,0 +1,17 @@
+{
+  "base": {
+    "logo": "",
+    "project": "C02-alice-fabler-wikipedia",
+    "environment": "telegram",
+    "comment": "",
+    "reportLink": "https://jenkins.autotests.cloud/job/C02-alice-fabler-wikipedia/6/",
+    "language": "en",
+    "allureFolder": "allure-report",
+    "enableChart": true
+  },
+  "telegram": {
+    "token": "8245856490:AAFz27L9AB1avCYD1baQ5ne5CspTx2kSveM",
+    "chat": "-412279210",
+    "replyTo": ""
+  }
+}

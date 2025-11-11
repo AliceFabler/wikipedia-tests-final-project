@@ -1,0 +1,255 @@
+//file:noinspection VulnerableLibrariesLocal
+import groovy.json.JsonOutput
+import org.gradle.api.file.RelativePath
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
+
+plugins {
+    id 'java-library'
+    id 'io.freefair.lombok' version '9.0.0'
+}
+
+group = 'guru.qa'
+version = '1.0-SNAPSHOT'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(17) }
+    withSourcesJar()
+    withJavadocJar()
+}
+
+repositories { mavenCentral() }
+
+/* ----------------------------- Allure paths ----------------------------- */
+def allureResultsDir = layout.projectDirectory.dir("allure-results")
+def allureCmdHome    = layout.projectDirectory.dir("allure/commandline")
+def allureBin = {
+    def os = org.gradle.internal.os.OperatingSystem.current()
+    os.isWindows() ? allureCmdHome.file("bin/allure.bat").asFile
+            : allureCmdHome.file("bin/allure").asFile
+}()
+
+/** Централизованные версии зависимостей */
+def ver = [
+        selenide       : "7.12.0",
+        selenideAppium : "7.12.0",
+        appium         : "10.0.0",
+        junit          : "5.14.1",
+        allureJava     : "2.30.0",
+        allureCli      : "2.35.1",
+        owner          : "1.0.12",
+        restAssured    : "5.5.6",
+        commonsIo      : "2.20.0",
+        jbAnnotations  : "26.0.2-1",
+        datafaker      : "2.5.2",
+        lombok         : "1.18.42",
+        logback        : "1.5.20",
+        slf4j          : "2.0.16"
+]
+
+lombok { version = ver.lombok }
+
+dependencies {
+    // Тестовый стек
+    testImplementation "org.junit.jupiter:junit-jupiter:${ver.junit}"
+    testImplementation "com.codeborne:selenide:${ver.selenide}"
+    testImplementation "com.codeborne:selenide-appium:${ver.selenideAppium}"
+    testImplementation "io.appium:java-client:${ver.appium}"
+
+    // Allure адаптеры (без плагина)
+    testImplementation "io.qameta.allure:allure-junit5:${ver.allureJava}"
+    testImplementation "io.qameta.allure:allure-selenide:${ver.allureJava}"
+    testImplementation "io.qameta.allure:allure-rest-assured:${ver.allureJava}"
+
+    // Утилиты
+    testImplementation "org.aeonbits.owner:owner:${ver.owner}"
+    testImplementation "io.rest-assured:rest-assured:${ver.restAssured}"
+    testImplementation "commons-io:commons-io:${ver.commonsIo}"
+    testImplementation "net.datafaker:datafaker:${ver.datafaker}"
+
+    // Аннотации (опционально)
+    compileOnly     "org.jetbrains:annotations:${ver.jbAnnotations}"
+    testCompileOnly "org.jetbrains:annotations:${ver.jbAnnotations}"
+
+    // Логирование
+    testImplementation "ch.qos.logback:logback-classic:${ver.logback}"
+
+    // Для некоторых IDEA/Gradle 9 сценариев
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.18.0'
+    testImplementation 'org.assertj:assertj-core:3.27.4'
+}
+
+/* ------------------------------------------------------------------ */
+/* Управляющие флаги (через -P…)                                      */
+/* ------------------------------------------------------------------ */
+def withTests        = providers.gradleProperty("withTests").map { it.toBoolean() }.orElse(false)
+def withAllureReport = providers.gradleProperty("withAllureReport").map { it.toBoolean() }.orElse(false)
+def withAllureServe  = providers.gradleProperty("withAllureServe").map { it.toBoolean() }.orElse(false)
+def tagsProp         = providers.gradleProperty("tags").orElse("").map { it.trim() }
+
+/* ----------------- Скачать Allure CLI в allure/commandline ------------- */
+configurations { allureCliZip }
+dependencies { allureCliZip "io.qameta.allure:allure-commandline:${ver.allureCli}@zip" }
+
+// «Сплющиваем» ZIP (убираем верхнюю директорию) и кладём в allure/commandline
+tasks.register('downloadAllureCli', Sync) {
+    from({ zipTree(configurations.allureCliZip.singleFile) }) {
+        includeEmptyDirs = false
+        eachFile { f ->
+            def seg = f.relativePath.segments
+            if (seg.length > 1) {
+                f.relativePath = new RelativePath(true, seg[1..-1] as String[])
+            } else {
+                f.exclude()
+            }
+        }
+    }
+    into(allureCmdHome.asFile)
+    onlyIf { !allureBin.exists() }
+}
+
+tasks.register('ensureAllureBin') {
+    dependsOn 'downloadAllureCli'
+    doLast {
+        if (!allureBin.exists()) throw new GradleException("Allure CLI не найден: ${allureBin.absolutePath}")
+        if (!allureBin.canExecute()) allureBin.setExecutable(true)
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Глобальная конфигурация тестов                                     */
+/* ------------------------------------------------------------------ */
+def isTestRequested = { gradle.startParameter.taskNames.any { it?.toLowerCase(Locale.ROOT)?.contains('test') } }
+
+tasks.withType(Test).configureEach {
+    onlyIf { withTests.get() || isTestRequested() }
+    useJUnitPlatform()
+
+    // Системные свойства
+    systemProperty "file.encoding", "UTF-8"
+    systemProperty "deviceHost", (project.findProperty("deviceHost") ?: System.getenv("DEVICE_HOST") ?: "local").toString()
+    systemProperty "platform",   (project.findProperty("platform")   ?: System.getenv("PLATFORM")     ?: "android").toString()
+
+    // Результаты Allure строго в корень (allure-results)
+    systemProperty "allure.results.directory", allureResultsDir.asFile.absolutePath
+
+    // Фильтр по тегам: -Ptags=smoke,fast
+    useJUnitPlatform {
+        def tagsStr = tagsProp.get()
+        if (tagsStr) {
+            String[] tagsArr = tagsStr.split(',').collect { it.trim() }.findAll { it } as String[]
+            includeTags(tagsArr)
+        }
+    }
+
+    // Логирование
+    testLogging {
+        events(TestLogEvent.PASSED, TestLogEvent.SKIPPED, TestLogEvent.FAILED)
+        showExceptions = true
+        exceptionFormat = TestExceptionFormat.FULL
+        showCauses = true
+        showStackTraces = true
+    }
+
+    // Параллельность
+    maxParallelForks = (providers.gradleProperty("maxParallelForks").orElse("1").get() as String).toInteger()
+
+    // Чистим возможный мусор и пишем executor.json в корень
+    doFirst {
+        file("$buildDir/allure-results").deleteDir()
+        file("$buildDir/allure").deleteDir()
+        allureResultsDir.asFile.mkdirs()
+        new File(allureResultsDir.asFile, "executor.json").text =
+                JsonOutput.prettyPrint(JsonOutput.toJson([
+                        name      : "Gradle",
+                        type      : "gradle",
+                        taskName  : gradle.startParameter.taskNames.join(' '),
+                        buildName : project.name,
+                        buildOrder: System.currentTimeMillis()
+                ]))
+    }
+
+    // По флагам — собрать/поднять отчёт через ЛОКАЛЬНЫЙ CLI
+    doLast {
+        if (withAllureReport.get()) tasks.named('allureReport').get().exec()
+        if (withAllureServe.get())  tasks.named('allureServe').get().exec()
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Кастомные задачи                                                   */
+/* ------------------------------------------------------------------ */
+def testDirs = sourceSets.test.output.classesDirs
+def testCP   = sourceSets.test.runtimeClasspath
+
+tasks.register('local_test', Test) {
+    group = "verification"; description = "Run tests tagged with @local"
+    testClassesDirs = testDirs; classpath = testCP
+    useJUnitPlatform { includeTags("local") }
+    systemProperty "deviceHost", (project.findProperty("deviceHost") ?: System.getenv("DEVICE_HOST") ?: "local").toString()
+    systemProperty "file.encoding", "UTF-8"
+    filter { includeTestsMatching "*" }
+}
+
+tasks.register('remote_test', Test) {
+    group = "verification"; description = "Run tests tagged with @remote"
+    testClassesDirs = testDirs; classpath = testCP
+    useJUnitPlatform { includeTags("remote") }
+    systemProperty "deviceHost", (project.findProperty("deviceHost") ?: System.getenv("DEVICE_HOST") ?: "remote").toString()
+    systemProperty "file.encoding", "UTF-8"
+    filter { includeTestsMatching "*" }
+}
+
+tasks.register('tagged_test', Test) {
+    group = "verification"; description = "Run tests filtered by -Ptags=tag1,tag2"
+    testClassesDirs = testDirs; classpath = testCP
+    useJUnitPlatform {
+        def tagsStr = tagsProp.get()
+        if (!tagsStr) throw new GradleException("Укажите тэги: -Ptags=smoke,fast")
+        String[] tagsArr = tagsStr.split(',').collect { it.trim() }.findAll { it } as String[]
+        includeTags(tagsArr)
+    }
+    filter { includeTestsMatching "*" }
+}
+
+/* -------------------- Отчёт и сервер через наш CLI ---------------------- */
+tasks.register('allureReport', Exec) {
+    group = "verification"; description = "Generate Allure report from allure-results via local CLI"
+    dependsOn 'ensureAllureBin'
+    inputs.dir(allureResultsDir.asFile)
+    def outDir = layout.projectDirectory.dir("allure-report").asFile
+    outputs.dir(outDir)
+    doFirst {
+        file("$buildDir/allure-results").deleteDir()
+        file("$buildDir/allure").deleteDir()
+        outDir.mkdirs()
+    }
+    commandLine allureBin.absolutePath, "generate",
+            allureResultsDir.asFile.absolutePath,
+            "-o", outDir.absolutePath, "--clean"
+}
+
+tasks.register('allureServe', Exec) {
+    group = "verification"; description = "Serve Allure report from allure-results via local CLI"
+    dependsOn 'ensureAllureBin'
+    inputs.dir(allureResultsDir.asFile)
+    doFirst {
+        file("$buildDir/allure-results").deleteDir()
+        file("$buildDir/allure").deleteDir()
+        if (!allureResultsDir.asFile.exists() || (allureResultsDir.asFile.listFiles()?.length ?: 0) == 0) {
+            throw new GradleException("Нет результатов в ${allureResultsDir.asFile}")
+        }
+    }
+    commandLine allureBin.absolutePath, "serve", allureResultsDir.asFile.absolutePath
+}
+
+/* ------------------------------------------------------------------ */
+/* Качество сборки и воспроизводимость                                */
+/* ------------------------------------------------------------------ */
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}

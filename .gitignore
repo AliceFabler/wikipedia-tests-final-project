@@ -1,24 +1,136 @@
+# =========================
+# ОС и редакторы
+# =========================
+# macOS
+.DS_Store
+.AppleDouble
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# IDE / Editors
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.fleet/
+.history/
+.vim/
+*.swp
+
+# Eclipse / NetBeans (на всякий случай)
+.classpath
+.project
+.settings/
+.nb-gradle/
+nbproject/private/
+nbbuild/
+dist/
+
+# =========================
+# Java / JVM артефакты
+# =========================
 # Compiled class file
 *.class
 
 # Log file
 *.log
+logs/
+**/logs/
 
-# BlueJ files
+# VM crash logs
+hs_err_pid*
+replay_pid*
+*.hprof
+.java_pid*
+
+# BlueJ
 *.ctxt
 
-# Mobile Tools for Java (J2ME)
+# J2ME
 .mtj.tmp/
 
-# Package Files #
+# Пакеты / архивы
 *.jar
 *.war
 *.nar
 *.ear
 *.zip
+*.tar
 *.tar.gz
 *.rar
+*.7z
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
-hs_err_pid*
-replay_pid*
+# =========================
+# Gradle / Сборка
+# =========================
+.gradle/
+**/build/
+build/
+out/
+target/
+
+# Не игнорить Gradle Wrapper (обязательно в репозитории!)
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+!gradlew
+!gradlew.bat
+
+# Кеши / временные
+.tmp/
+temp/
+tmp/
+
+# =========================
+# Android / Appium (артефакты)
+# =========================
+# APK/AAB и ключи подписи
+*.apk
+*.ap_
+*.aab
+*.keystore
+*.jks
+
+# Локальный android sdk путь в корне android-проекта
+# (не мешает src/**/resources/local.properties)
+local.properties
+
+# Видео/скриншоты от прогонов (если лежат вне build/)
+**/videos/
+**/video/
+**/screenshots/
+
+# =========================
+# Allure / Отчёты
+# =========================
+**/allure/
+**/allure-results/
+**/allure-report/
+**/allure-history/
+
+# =========================
+# Конфиги/секреты (оставь *.example файлы)
+# =========================
+*.env
+*.env.*
+.envrc
+**/auth.properties
+!**/auth.properties.example
+**/*secrets*
+**/*secret*
+
+# =========================
+# Разное по проекту
+# =========================
+# Скрипты игнорируются, если они чисто локальные; убери строку ниже,
+# если хочешь версионировать scripts/
+**/scripts/
+
+# Кэш/артефакты инструментов
+.scannerwork/
