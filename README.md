@@ -25,6 +25,8 @@
 - [Реализованные проверки (по коду)](#tests)
 - [Ссылки](#links)
 - [Уведомления в Telegram](#telegram)
+- [Видео примера запуска тестов](#video)
+- [Мини-чек-лист](#check)
 
 ---
 
@@ -281,6 +283,7 @@ wikipedia-tests-final-project
 
 ----
 
+<a name="video"></a>
 ## Видео примера запуска тестов
 
 К каждому тесту в отчете прилагается видео прогона.
@@ -288,6 +291,9 @@ wikipedia-tests-final-project
   <img width="50%" title="Selenoid Video" src="media/video-mobile.gif" alt="">
 </p>
 
+---
+
+<a name="check"></a>
 ### Мини-чек-лист
 - [x] Список тестов и групп — **по коду**  
 - [x] Теги и уровни — с аннотаций классов  
