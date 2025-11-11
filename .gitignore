@@ -109,7 +109,7 @@ local.properties
 # =========================
 # Allure / Отчёты
 # =========================
-**/.allure/
+**/allure/
 **/allure-results/
 **/allure-report/
 **/allure-history/

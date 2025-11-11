@@ -22,7 +22,7 @@ repositories { mavenCentral() }
 
 /* ----------------------------- Allure paths ----------------------------- */
 def allureResultsDir = layout.projectDirectory.dir("allure-results")
-def allureCmdHome    = layout.projectDirectory.dir(".allure/commandline")
+def allureCmdHome    = layout.projectDirectory.dir("allure/commandline")
 def allureBin = {
     def os = org.gradle.internal.os.OperatingSystem.current()
     os.isWindows() ? allureCmdHome.file("bin/allure.bat").asFile
@@ -89,11 +89,11 @@ def withAllureReport = providers.gradleProperty("withAllureReport").map { it.toB
 def withAllureServe  = providers.gradleProperty("withAllureServe").map { it.toBoolean() }.orElse(false)
 def tagsProp         = providers.gradleProperty("tags").orElse("").map { it.trim() }
 
-/* ----------------- Скачать Allure CLI в .allure/commandline ------------- */
+/* ----------------- Скачать Allure CLI в allure/commandline ------------- */
 configurations { allureCliZip }
 dependencies { allureCliZip "io.qameta.allure:allure-commandline:${ver.allureCli}@zip" }
 
-// «Сплющиваем» ZIP (убираем верхнюю директорию) и кладём в .allure/commandline
+// «Сплющиваем» ZIP (убираем верхнюю директорию) и кладём в allure/commandline
 tasks.register('downloadAllureCli', Sync) {
     from({ zipTree(configurations.allureCliZip.singleFile) }) {
         includeEmptyDirs = false
@@ -219,7 +219,7 @@ tasks.register('allureReport', Exec) {
     group = "verification"; description = "Generate Allure report from allure-results via local CLI"
     dependsOn 'ensureAllureBin'
     inputs.dir(allureResultsDir.asFile)
-    def outDir = layout.projectDirectory.dir(".allure/report").asFile
+    def outDir = layout.projectDirectory.dir("allure-report").asFile
     outputs.dir(outDir)
     doFirst {
         file("$buildDir/allure-results").deleteDir()
